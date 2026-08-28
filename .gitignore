@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.netlify
+.env
+.env.local
+.env*.local
+# Holds the raw Supabase keys this project was set up from.
+.env.txt
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Claude Code personal/local settings (permission allowlist etc.)
+.claude/settings.local.json

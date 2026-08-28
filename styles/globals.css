@@ -1,0 +1,1205 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens — a clean light system, exposed as Tailwind v4 theme variables.
+   Declaring them here generates the utilities (text-graphite, bg-canvas,
+   border-line, ...) so pages never hardcode hex values.
+
+   White surfaces, near-black type, hairline rules, generous whitespace, and a
+   single restrained accent. Depth comes from shadow and spacing rather than
+   from fills — on a light ground, translucency reads as dirt.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-canvas: #ffffff;
+  --color-raised: #f7f6f4;
+  --color-sunken: #efedea;
+  --color-graphite: #0b0b0c;
+  --color-muted: #6b6b70;
+  --color-accent: #c2410c;
+  --color-accent-deep: #9a3412;
+
+  /* Lines and veils are neutral black at low alpha, so they sit on white and on
+     the photographic bands without picking up a colour cast. */
+  --color-line: rgb(0 0 0 / 0.1);
+  --color-veil: rgb(0 0 0 / 0.03);
+
+  /* Semantics stay off the accent so status never reads as decoration. Each is
+     dark enough to clear AA on white, which the previous dark-ground values
+     could not. */
+  --color-warn: #b45309;
+  --color-info: #1d4ed8;
+  --color-danger: #b91c1c;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", Inter, ui-sans-serif,
+    system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
+    Consolas, monospace;
+}
+
+/* Raw values for use inside plain CSS below, where theme vars in
+   colour-mix()/box-shadow get verbose. */
+:root {
+  --graphite-rgb: 11 11 12;
+  --accent-rgb: 194 65 12;
+
+  --hair: rgb(0 0 0 / 0.1);
+  --hair-strong: rgb(0 0 0 / 0.18);
+  --veil: rgb(0 0 0 / 0.03);
+  --veil-hover: rgb(0 0 0 / 0.055);
+  --blur: 14px;
+
+  /* One shared curve for the whole UI — see the motion layer. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--hair);
+  }
+
+  html {
+    background-color: var(--color-canvas);
+    color-scheme: light;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    /* Glass has to refract *something*. On a flat white page a translucent
+       panel is indistinguishable from a solid one, so three very low alpha
+       washes sit under the whole app — enough for a blurred edge to pick up a
+       gradient, far too faint to read as a colour. Fixed, so panels shift
+       against the wash as the page scrolls. */
+    background-image:
+      radial-gradient(
+        60rem 40rem at 12% -12%,
+        rgb(var(--accent-rgb) / 0.06),
+        transparent 62%
+      ),
+      radial-gradient(
+        52rem 38rem at 92% 6%,
+        rgb(29 78 216 / 0.05),
+        transparent 64%
+      ),
+      radial-gradient(
+        48rem 34rem at 50% 110%,
+        rgb(var(--graphite-rgb) / 0.05),
+        transparent 62%
+      );
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    color: var(--color-graphite);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: rgb(var(--accent-rgb) / 0.16);
+    color: var(--color-graphite);
+  }
+
+  /* Keyboard focus is always visible. Graphite reads against the white page;
+     the inverse override below is for the near-black pills, where a dark ring
+     would vanish. */
+  :focus-visible {
+    outline: 2px solid var(--color-graphite);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-raised);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--graphite-rgb) / 0.18);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--graphite-rgb) / 0.32);
+  }
+}
+
+@layer components {
+  /* -----------------------------------------------------------------------
+     .surface — the single panel treatment. Every card, sidebar, chat box and
+     modal composes this, which is what keeps the UI reading as one system.
+
+     Now genuinely glass: a translucent white gradient over a blur, a bright
+     inner lip along the top edge, and an outer hairline ring so the boundary
+     still reads where the panel sits on plain white. `.glass` is kept as an
+     alias (see the shim at the end) and now earns the name.
+     ----------------------------------------------------------------------- */
+  .surface,
+  .glass {
+    position: relative;
+    background: linear-gradient(
+      158deg,
+      rgb(255 255 255 / 0.84) 0%,
+      rgb(255 255 255 / 0.62) 54%,
+      rgb(255 255 255 / 0.76) 100%
+    );
+    backdrop-filter: blur(18px) saturate(165%);
+    -webkit-backdrop-filter: blur(18px) saturate(165%);
+    border: 1px solid rgb(255 255 255 / 0.72);
+    border-radius: 1rem;
+    /* Two inset lines make the lip; the 1px spread ring is what keeps the panel
+       from dissolving into the page, since a translucent border alone would. */
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      inset 0 -1px 0 rgb(255 255 255 / 0.4),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.06),
+      0 2px 4px rgb(var(--graphite-rgb) / 0.03),
+      0 16px 40px -22px rgb(var(--graphite-rgb) / 0.2);
+  }
+
+  .surface-hover,
+  .glass-hover {
+    transition:
+      background 0.25s var(--ease),
+      border-color 0.25s var(--ease),
+      box-shadow 0.25s var(--ease),
+      transform 0.25s var(--ease);
+  }
+  .surface-hover:hover,
+  .glass-hover:hover {
+    background: linear-gradient(
+      158deg,
+      rgb(255 255 255 / 0.9) 0%,
+      rgb(255 255 255 / 0.7) 54%,
+      rgb(255 255 255 / 0.82) 100%
+    );
+    border-color: rgb(255 255 255 / 0.9);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      inset 0 -1px 0 rgb(255 255 255 / 0.45),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.1),
+      0 2px 6px rgb(var(--graphite-rgb) / 0.04),
+      0 26px 52px -24px rgb(var(--graphite-rgb) / 0.26);
+    transform: translateY(-3px);
+  }
+
+  /* A lighter, more transparent variant of .surface, for panels that sit over
+     photography or that should let more of the page through. .surface is the
+     default; this is the thinner pane. */
+  .surface-glass {
+    position: relative;
+    background: linear-gradient(
+      158deg,
+      rgb(255 255 255 / 0.66) 0%,
+      rgb(255 255 255 / 0.44) 55%,
+      rgb(255 255 255 / 0.58) 100%
+    );
+    backdrop-filter: blur(var(--blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+    border: 1px solid rgb(255 255 255 / 0.62);
+    border-radius: 1rem;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.8),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.05),
+      0 12px 34px -20px rgb(var(--graphite-rgb) / 0.22);
+  }
+
+  /* --- Full-bleed photography ------------------------------------------- */
+  /* .vignette is a standalone overlay: drop it as an absolutely positioned
+     child over any image. .hero-photo does the same job as a container so a
+     hero only needs one wrapper.
+
+     Both scrims are WHITE, not black: the page is light and the headline is
+     near-black, so a photograph has to be washed out toward the page rather
+     than darkened away from it.
+
+     The wash is concentrated, not uniform. An even 0.7 veil turned the campus
+     into a pale suggestion of itself; instead the radial core sits behind the
+     centred text block and the outer fifth of the frame is left almost clear,
+     so the photograph reads as a photograph while the headline keeps its
+     contrast. The bottom stop still closes to near-white, which is what joins
+     the hero to the page below without a visible seam. */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        78% 66% at 50% 44%,
+        rgb(255 255 255 / 0.62) 0%,
+        rgb(255 255 255 / 0.36) 48%,
+        rgb(255 255 255 / 0.06) 80%,
+        rgb(255 255 255 / 0) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.3) 0%,
+        rgb(255 255 255 / 0.06) 30%,
+        rgb(255 255 255 / 0.1) 60%,
+        rgb(255 255 255 / 0.86) 100%
+      );
+  }
+
+  /* isolation keeps the z-indexes below local, so a hero can sit anywhere in
+     the page without the overlay escaping its stacking context. */
+  .hero-photo {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background-color: var(--color-canvas);
+  }
+  .hero-photo::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        78% 66% at 50% 44%,
+        rgb(255 255 255 / 0.62) 0%,
+        rgb(255 255 255 / 0.36) 48%,
+        rgb(255 255 255 / 0.06) 80%,
+        rgb(255 255 255 / 0) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.3) 0%,
+        rgb(255 255 255 / 0.06) 30%,
+        rgb(255 255 255 / 0.1) 60%,
+        rgb(255 255 255 / 0.86) 100%
+      );
+  }
+  .hero-photo-img {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* A touch of life back: with less white over the top, the photograph can
+       carry its own colour instead of being lifted by the scrim. */
+    filter: saturate(1.08) contrast(1.02);
+  }
+  .hero-photo-content {
+    position: relative;
+    z-index: 2;
+    /* Insurance, not decoration. The scrim is now light enough that the tone
+       directly under a glyph varies with the photograph; a wide, very soft white
+       halo keeps near-black type legible over the brighter patches without
+       reading as a drop shadow. */
+    text-shadow:
+      0 1px 2px rgb(255 255 255 / 0.7),
+      0 0 18px rgb(255 255 255 / 0.85),
+      0 0 44px rgb(255 255 255 / 0.6);
+  }
+
+  /* --- Type ------------------------------------------------------------- */
+  /* The reference headline: huge, uppercase, leading under 1, tracking pulled
+     in. Everything else on the page defers to it. */
+  .display {
+    font-family: var(--font-display);
+    font-size: clamp(2.75rem, 11vw, 8rem);
+    font-weight: 700;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    color: var(--color-graphite);
+    text-wrap: balance;
+  }
+  .display-sm {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 5vw, 3.25rem);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    color: var(--color-graphite);
+    text-wrap: balance;
+  }
+
+  /* Deliberately quiet — in the reference the line under the headline is
+     almost a whisper. */
+  .subcopy {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: rgb(var(--graphite-rgb) / 0.55);
+  }
+
+  .heading,
+  .neon-text {
+    color: var(--color-graphite);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .muted,
+  .neon-text-soft {
+    color: rgb(var(--graphite-rgb) / 0.6);
+  }
+
+  /* The amber is a seasoning, not a paint. Single figures, live indicators,
+     one word in a sentence. */
+  .accent {
+    color: var(--color-accent);
+  }
+
+  /* --- Buttons ---------------------------------------------------------- */
+  /* Solid near-black pill with white text — the page's only loud element. */
+  .btn-primary,
+  .neon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.375rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    line-height: 1.25rem;
+    background: var(--color-graphite);
+    color: var(--color-canvas);
+    border: 1px solid var(--color-graphite);
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.12s ease;
+  }
+  .btn-primary:hover:not(:disabled),
+  .neon-btn:hover:not(:disabled) {
+    background: #26262b;
+    box-shadow: 0 10px 24px -14px rgb(var(--graphite-rgb) / 0.55);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active:not(:disabled),
+  .neon-btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn-primary:disabled,
+  .neon-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  /* A graphite ring on a graphite button is invisible; the accent is the one
+     colour that reads against both the pill and the page. */
+  .btn-primary:focus-visible,
+  .neon-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+
+  .btn-ghost,
+  .neon-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.375rem;
+    border-radius: 9999px;
+    font-weight: 500;
+    font-size: 0.9375rem;
+    line-height: 1.25rem;
+    background: rgb(255 255 255 / 0.55);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    color: var(--color-graphite);
+    border: 1px solid rgb(255 255 255 / 0.68);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.8),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.08);
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .btn-ghost:hover:not(:disabled),
+  .neon-btn-ghost:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.78);
+    border-color: rgb(255 255 255 / 0.9);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.14);
+  }
+  .btn-ghost:disabled,
+  .neon-btn-ghost:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-danger,
+  .neon-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1.125rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    background: rgb(185 28 28 / 0.1);
+    color: var(--color-danger);
+    border: 1px solid rgb(185 28 28 / 0.3);
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .btn-danger:hover:not(:disabled),
+  .neon-btn-danger:hover:not(:disabled) {
+    background: rgb(185 28 28 / 0.18);
+    border-color: rgb(185 28 28 / 0.45);
+  }
+  .btn-danger:disabled,
+  .neon-btn-danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* The small circular button that sits beside the primary CTA in the
+     reference, and doubles as an icon-only control anywhere else. */
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 9999px;
+    background: var(--veil);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    color: var(--color-graphite);
+    border: 1px solid var(--hair);
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .btn-icon:hover:not(:disabled) {
+    background: var(--veil-hover);
+    border-color: var(--hair-strong);
+  }
+  .btn-icon:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  /* Solid variant for when the pair should read as one near-black unit. */
+  .btn-icon-solid {
+    background: var(--color-graphite);
+    color: var(--color-canvas);
+    border-color: var(--color-graphite);
+  }
+  .btn-icon-solid:hover:not(:disabled) {
+    background: #26262b;
+    border-color: #26262b;
+  }
+  .btn-icon-solid:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+
+  /* --- Eyebrow badge ---------------------------------------------------- */
+  /* The small pill above the headline, with a circular icon well. Kept
+     translucent so it reads over the hero photograph as well as over white. */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.875rem 0.25rem 0.3125rem;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--hair);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    color: rgb(var(--graphite-rgb) / 0.78);
+    white-space: nowrap;
+  }
+  .eyebrow-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    background: rgb(var(--graphite-rgb) / 0.1);
+    border: 1px solid var(--hair);
+    color: var(--color-graphite);
+  }
+
+  /* --- Form controls ---------------------------------------------------- */
+  .field,
+  .textarea,
+  .neon-input,
+  .neon-select,
+  .neon-textarea {
+    width: 100%;
+    /* Translucent to match the panels they sit in, with a bright inner lip and
+       an outer ring so the input still reads as a well rather than as bare
+       page. */
+    background: rgb(255 255 255 / 0.58);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    color: var(--color-graphite);
+    font-size: 0.9375rem;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.75),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.07);
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .textarea,
+  .neon-textarea {
+    min-height: 8rem;
+    resize: vertical;
+  }
+  .field::placeholder,
+  .textarea::placeholder,
+  .neon-input::placeholder,
+  .neon-textarea::placeholder {
+    color: rgb(var(--graphite-rgb) / 0.32);
+  }
+  .field:focus,
+  .textarea:focus,
+  .neon-input:focus,
+  .neon-select:focus,
+  .neon-textarea:focus {
+    outline: none;
+    /* Focus clears the glass: an active field should be the most legible thing
+       on screen, so the blur gives way to something nearer solid. */
+    background: rgb(255 255 255 / 0.92);
+    border-color: rgb(255 255 255 / 0.9);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.28),
+      0 0 0 4px rgb(var(--graphite-rgb) / 0.07);
+  }
+  .field-label,
+  .neon-label {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgb(var(--graphite-rgb) / 0.45);
+    margin-bottom: 0.375rem;
+  }
+
+  /* --- Nav -------------------------------------------------------------- */
+  /* Inline top nav: light weight, low contrast, separated by tiny dots. */
+  .nav-label {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    color: rgb(var(--graphite-rgb) / 0.62);
+    transition: color 0.18s ease;
+  }
+  .nav-label:hover {
+    color: var(--color-graphite);
+  }
+  .dot-sep {
+    display: inline-block;
+    flex: none;
+    width: 3px;
+    height: 3px;
+    border-radius: 9999px;
+    background: rgb(var(--graphite-rgb) / 0.4);
+    vertical-align: middle;
+  }
+
+  /* Sidebar nav — same restraint, but the active row needs to hold its state
+     without an accent bar or a glow. */
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: rgb(var(--graphite-rgb) / 0.6);
+    border: 1px solid transparent;
+    transition:
+      background 0.18s ease,
+      color 0.18s ease,
+      border-color 0.18s ease;
+  }
+  .nav-link:hover {
+    background: var(--veil);
+    color: var(--color-graphite);
+  }
+  .nav-link-active {
+    background: var(--veil-hover);
+    border-color: var(--hair);
+    color: var(--color-graphite);
+  }
+
+  /* --- Tabs ------------------------------------------------------------- */
+  .tab {
+    padding: 0.5rem 1.125rem;
+    border-radius: 9999px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: rgb(var(--graphite-rgb) / 0.6);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition:
+      background 0.18s ease,
+      color 0.18s ease,
+      border-color 0.18s ease;
+  }
+  .tab:hover {
+    color: var(--color-graphite);
+    background: var(--veil);
+  }
+  /* Selected tab borrows the near-black pill — the same vocabulary as the CTA. */
+  .tab-active {
+    color: var(--color-canvas);
+    background: rgb(var(--graphite-rgb) / 0.94);
+    border-color: transparent;
+    font-weight: 600;
+  }
+  .tab-active:hover {
+    color: var(--color-canvas);
+    background: #26262b;
+  }
+
+  /* --- Chat bubbles ----------------------------------------------------- */
+  .bubble {
+    max-width: min(80%, 34rem);
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.875rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  /* Own messages carry the fill, peers stay on the page — a thread scans by
+     weight rather than by colour-coding. */
+  .bubble-self {
+    background: rgb(var(--graphite-rgb) / 0.055);
+    border: 1px solid rgb(var(--graphite-rgb) / 0.16);
+    color: var(--color-graphite);
+  }
+  .bubble-other {
+    background: var(--color-canvas);
+    border: 1px solid var(--hair);
+    color: rgb(var(--graphite-rgb) / 0.88);
+  }
+  /* Staff replies carry the only accent in the thread, mostly on the edge. */
+  .bubble-staff {
+    background: rgb(var(--accent-rgb) / 0.05);
+    border: 1px solid rgb(var(--accent-rgb) / 0.18);
+    border-left: 3px solid rgb(var(--accent-rgb) / 0.65);
+    color: rgb(var(--graphite-rgb) / 0.92);
+  }
+
+  /* --- Status + notice -------------------------------------------------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.1875rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 1px solid rgb(255 255 255 / 0.6);
+    background: rgb(255 255 255 / 0.55);
+    backdrop-filter: blur(8px) saturate(140%);
+    -webkit-backdrop-filter: blur(8px) saturate(140%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.8),
+      0 0 0 1px rgb(var(--graphite-rgb) / 0.07);
+    color: rgb(var(--graphite-rgb) / 0.75);
+  }
+  .badge-neutral {
+    background: var(--veil);
+    border-color: var(--hair);
+    color: rgb(var(--graphite-rgb) / 0.7);
+  }
+  .badge-pending {
+    background: rgb(180 83 9 / 0.08);
+    border-color: rgb(180 83 9 / 0.28);
+    color: var(--color-warn);
+  }
+  .badge-review {
+    background: rgb(29 78 216 / 0.08);
+    border-color: rgb(29 78 216 / 0.26);
+    color: var(--color-info);
+  }
+  /* Resolved is the terminal good state, so it gets graphite rather than a
+     fourth hue — there is no green in this system to reach for. */
+  .badge-resolved {
+    background: rgb(var(--graphite-rgb) / 0.07);
+    border-color: rgb(var(--graphite-rgb) / 0.22);
+    color: var(--color-graphite);
+  }
+  .badge-rejected {
+    background: rgb(185 28 28 / 0.08);
+    border-color: rgb(185 28 28 / 0.26);
+    color: var(--color-danger);
+  }
+
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    background: var(--veil);
+    border: 1px solid var(--hair);
+    color: rgb(var(--graphite-rgb) / 0.8);
+  }
+  .notice-warn {
+    background: rgb(180 83 9 / 0.07);
+    border-color: rgb(180 83 9 / 0.24);
+    color: var(--color-warn);
+  }
+  .notice-error {
+    background: rgb(185 28 28 / 0.07);
+    border-color: rgb(185 28 28 / 0.24);
+    color: var(--color-danger);
+  }
+
+  /* --- Live indicator --------------------------------------------------- */
+  .pulse-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-accent);
+    animation: pulse-glow 2.4s ease-in-out infinite;
+  }
+  .pulse-dot-off {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: rgb(var(--graphite-rgb) / 0.25);
+    animation: none;
+  }
+}
+
+/* Opacity only — the old version pulsed a box-shadow, which is exactly the
+   glow this direction removes. */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ===========================================================================
+   COMPATIBILITY SHIM — do not build new work against anything in here.
+   ---------------------------------------------------------------------------
+   Only the CLASS aliases survive, grouped onto their canonical rules above and
+   marked there: .glass, .glass-hover, .neon-btn, .neon-btn-ghost,
+   .neon-btn-danger, .neon-input, .neon-select, .neon-textarea, .neon-label,
+   .neon-text, .neon-text-soft.
+
+   The token aliases (--color-neon/-soft/-dim, --color-mist) are GONE. They
+   mapped onto a dark palette, where mist meant near-white text; on this light
+   ground that renders white on white. A build error beats an invisible label,
+   so a stray `text-mist` must now fail loudly rather than degrade silently.
+   =========================================================================== */
+:root {
+  --glass-bg: var(--color-canvas);
+  --glass-border: var(--hair);
+  --glass-blur: var(--blur);
+}
+
+/* ===========================================================================
+   Motion layer
+   ---------------------------------------------------------------------------
+   Every transform below is compositor-friendly (opacity + transform only), so
+   scrolling never triggers layout. Timing is one shared curve —
+   cubic-bezier(0.22, 1, 0.36, 1), a decelerating ease-out with no overshoot —
+   so reveals, slides and swaps all feel like the same system.
+   =========================================================================== */
+
+@layer components {
+  /* --- Scroll reveal ---------------------------------------------------- */
+  .reveal {
+    opacity: 0;
+    transition:
+      opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .reveal-up {
+    transform: translateY(24px);
+  }
+  .reveal-left {
+    transform: translateX(-24px);
+  }
+  .reveal-right {
+    transform: translateX(24px);
+  }
+  .reveal-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* --- Per-line heading reveal ------------------------------------------ */
+  /* The clip is what sells it: each line rises out of nothing rather than
+     fading in place. */
+  .line-clip {
+    display: block;
+    overflow: hidden;
+  }
+  .line-inner {
+    display: block;
+    transform: translateY(110%);
+    transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .line-in {
+    transform: translateY(0);
+  }
+
+  /* --- Rotating word --------------------------------------------------- */
+  .rotator {
+    position: relative;
+    display: inline-block;
+    vertical-align: bottom;
+    overflow: hidden;
+  }
+  /* Holds the width of the longest entry so surrounding text never shuffles
+     sideways mid-cycle. */
+  .rotator-ghost {
+    display: inline-block;
+    visibility: hidden;
+  }
+  .rotator-word {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-start: 0;
+    white-space: nowrap;
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 280ms ease;
+  }
+  .rotator-in {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  .rotator-out {
+    transform: translateY(-70%);
+    opacity: 0;
+  }
+
+  /* --- Infinite marquee ------------------------------------------------ */
+  .marquee {
+    display: flex;
+    overflow: hidden;
+    user-select: none;
+    /* Feathered edges so items enter and leave instead of being chopped. */
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 6%,
+      #000 94%,
+      transparent 100%
+    );
+  }
+  .marquee-track {
+    display: flex;
+    flex: none;
+    animation-name: marquee-scroll;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .marquee:hover .marquee-track {
+    animation-play-state: paused;
+  }
+  .marquee-group {
+    display: flex;
+    flex: none;
+    align-items: center;
+  }
+  .marquee-item {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: rgb(var(--graphite-rgb) / 0.7);
+  }
+  .marquee-sep {
+    padding: 0 1.75rem;
+    opacity: 0.35;
+  }
+
+  /* --- Travelling edge highlight --------------------------------------- */
+  /* A specular glint that runs around a panel's border, the way light moves
+     across a real pane as you shift your head. Painted on a ::before inset by
+     1px and masked to its own 1px padding ring, so the animation touches only
+     the edge: the panel's background and backdrop-filter are left alone, and
+     nothing reflows.
+
+     The angle is a registered custom property because a conic-gradient's `from`
+     is not animatable otherwise — @property gives it a type, and a typed
+     property can be interpolated. */
+  .edge-run {
+    position: relative;
+  }
+  .edge-run::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: conic-gradient(
+      from var(--edge-angle),
+      transparent 0deg,
+      transparent 286deg,
+      rgb(var(--accent-rgb) / 0.45) 330deg,
+      rgb(255 255 255 / 0.95) 352deg,
+      rgb(var(--accent-rgb) / 0.3) 358deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: edge-run 7s linear infinite;
+  }
+  /* The ring paints at z-index 0 inside the panel's stacking context, so the
+     panel's own content has to be lifted above it. */
+  .edge-run > * {
+    position: relative;
+    z-index: 1;
+  }
+  /* Negative delays start each card mid-cycle, so a row does not pulse in
+     lockstep. */
+  .edge-run-delay-1::before {
+    animation-delay: -2.33s;
+  }
+  .edge-run-delay-2::before {
+    animation-delay: -4.66s;
+  }
+
+  /* --- Drifting text --------------------------------------------------- */
+  /* A slow sheen crossing the glyphs themselves, so text inside a bordered
+     panel is never quite static. Clipped to the text: one background-position
+     animation, no layout, no repaint of anything around it. */
+  .text-drift {
+    background: linear-gradient(
+      100deg,
+      var(--color-graphite) 0%,
+      var(--color-graphite) 36%,
+      var(--color-accent) 50%,
+      var(--color-graphite) 64%,
+      var(--color-graphite) 100%
+    );
+    background-size: 280% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-drift 8s ease-in-out infinite;
+  }
+  /* The same idea at caption scale, kept inside the muted range so a label does
+     not start competing with the headline above it. */
+  .text-drift-soft {
+    background: linear-gradient(
+      100deg,
+      rgb(var(--graphite-rgb) / 0.62) 0%,
+      rgb(var(--graphite-rgb) / 0.62) 38%,
+      rgb(var(--accent-rgb) / 0.95) 50%,
+      rgb(var(--graphite-rgb) / 0.62) 62%,
+      rgb(var(--graphite-rgb) / 0.62) 100%
+    );
+    background-size: 280% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-drift 9s ease-in-out infinite;
+  }
+
+  /* --- Float ----------------------------------------------------------- */
+  /* A few pixels of vertical drift, for the one or two things that should feel
+     unmoored — a photograph in a glass frame, say. */
+  .float-slow {
+    animation: float-slow 9s var(--ease) infinite;
+  }
+
+  /* --- Hover text swap ------------------------------------------------- */
+  .swap {
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: bottom;
+  }
+  .swap-a,
+  .swap-b {
+    display: block;
+    transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .swap-b {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-start: 0;
+    transform: translateY(100%);
+  }
+  a:hover .swap-a,
+  button:hover .swap-a,
+  a:focus-visible .swap-a,
+  button:focus-visible .swap-a {
+    transform: translateY(-100%);
+  }
+  a:hover .swap-b,
+  button:hover .swap-b,
+  a:focus-visible .swap-b,
+  button:focus-visible .swap-b {
+    transform: translateY(0);
+  }
+
+  /* --- Panel slide (dashboard tabs) ------------------------------------ */
+  .slide-viewport {
+    position: relative;
+    overflow: hidden;
+  }
+  .slide-panel {
+    transition:
+      transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 260ms ease;
+  }
+  .slide-from-right {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+  .slide-from-left {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  .slide-in {
+    transform: none;
+    opacity: 1;
+  }
+  .slide-static {
+    transform: none;
+    opacity: 1;
+    transition: none;
+  }
+}
+
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  /* Exactly -50%: the track holds two identical copies, so at the end of the
+     cycle the second sits precisely where the first began. That is what makes
+     the loop seamless rather than visibly snapping. */
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Registering the angle is what makes .edge-run possible: an unregistered
+   custom property is an untyped token, so the browser cannot interpolate it and
+   the conic gradient would jump from 0deg to 360deg in one frame. */
+@property --edge-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes edge-run {
+  to {
+    --edge-angle: 360deg;
+  }
+}
+
+@keyframes text-drift {
+  0%,
+  100% {
+    background-position: 140% 50%;
+  }
+  50% {
+    background-position: -40% 50%;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .surface-hover:hover,
+  .glass-hover:hover,
+  .btn-primary:hover:not(:disabled),
+  .neon-btn:hover:not(:disabled) {
+    transform: none;
+  }
+  /* Content must be visible, not merely un-animated. */
+  .reveal,
+  .line-inner,
+  .rotator-word {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .marquee-track {
+    animation: none !important;
+  }
+
+  /* The glint becomes a static hairline rather than vanishing — the edge is
+     part of the panel, only its travel was decoration. */
+  .edge-run::before {
+    animation: none !important;
+    background: rgb(var(--graphite-rgb) / 0.1) !important;
+  }
+  .float-slow {
+    animation: none !important;
+    transform: none !important;
+  }
+  /* Text clipped to a gradient is transparent by construction, so the fallback
+     has to restore a real colour, not merely stop the animation. */
+  .text-drift,
+  .text-drift-soft {
+    animation: none !important;
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+  }
+  .text-drift {
+    color: var(--color-graphite) !important;
+  }
+  .text-drift-soft {
+    color: rgb(var(--graphite-rgb) / 0.62) !important;
+  }
+}

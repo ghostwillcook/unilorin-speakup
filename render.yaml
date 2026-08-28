@@ -1,0 +1,43 @@
+# Render blueprint for the realtime server — the half of SpeakUp that Netlify
+# cannot host.
+#
+# Socket.io needs a process that stays up between requests, so it runs here as an
+# ordinary long-lived Node service while the Next.js app runs on Netlify.
+#
+# Free plan caveat, worth knowing before students see it: a free Render service
+# spins down after roughly 15 minutes with no traffic, and the next connection
+# pays a cold start of up to a minute. During that window the app reports
+# "Chat server offline" and the chat room is unavailable — direct messages keep
+# working over the REST fallback, so nothing is lost, only delayed.
+#
+# Deploy: Render dashboard > New > Blueprint > pick this repository.
+# Then set the three secrets below under the service's Environment tab.
+
+services:
+  - type: web
+    name: speakup-socket
+    runtime: node
+    plan: free
+    region: frankfurt
+    # server/ is plain .mjs and is excluded from tsconfig, so there is nothing
+    # to compile — but Prisma Client still has to be generated, because the
+    # socket server queries Postgres directly.
+    buildCommand: npm ci && npx prisma generate
+    startCommand: node server/socket.mjs
+    # Matches the probe served by server/socket.mjs, which also reports how many
+    # students and admins are currently connected.
+    healthCheckPath: /health
+    envVars:
+      # Pooled Supabase connection. This process is long-lived and holds one
+      # pool, so either the pooler or the direct connection works here.
+      - key: DATABASE_URL
+        sync: false
+      # MUST be byte-identical to the value on Netlify. The handshake is a
+      # NextAuth session token decrypted with this secret; a mismatch rejects
+      # every connection while the web app looks perfectly healthy.
+      - key: NEXTAUTH_SECRET
+        sync: false
+      # The web app's public origin. Used as the CORS allow-list for the
+      # WebSocket handshake, so it has to be the Netlify URL, not this one.
+      - key: NEXTAUTH_URL
+        sync: false

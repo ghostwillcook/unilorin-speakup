@@ -1,0 +1,111 @@
+// UNILORIN SpeakUp — data model.
+//
+// User, Complaint, ChatMessage, Role and Status are the spec's models, ported
+// as written. DirectMessage and Setting are additions required by two resolved
+// decisions: student<->admin DMs, and admin settings that actually take effect.
+
+generator client {
+  provider = "prisma-client-js"
+  // "native" is for local development. The second target is the engine that
+  // runs on Netlify Functions and Render, both of which are Amazon Linux 2023
+  // on Node 20; without it the deployed app fails at the first query with
+  // "Query engine binary for current platform could not be found".
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  // Pooled connection for queries...
+  url      = env("DATABASE_URL")
+  // ...and a direct connection for migrations, which cannot run through
+  // Supabase's pgbouncer pooler.
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  name         String
+  studentId    String          @unique
+  passwordHash String
+  role         Role            @default(STUDENT)
+  isActive     Boolean         @default(true)
+  complaints   Complaint[]
+  chatMessages ChatMessage[]
+  // Messages in THIS user's DM thread (student side of the conversation).
+  dmThread     DirectMessage[] @relation("StudentThread")
+  // Messages this user authored, whether student or replying admin.
+  sentDms      DirectMessage[] @relation("SentDMs")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([role])
+}
+
+model Complaint {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  status      Status   @default(PENDING)
+  adminReply  String?
+  // Supabase Storage object keys, not URLs. The bucket is private; reads are
+  // authorized and signed by /api/attachments.
+  files       String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  // The real author. Persisted for the admin chat log and NEVER included in a
+  // payload sent to a student client.
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Per-session display name, e.g. "Anonymous #42".
+  pseudonym String
+  content   String
+  timestamp DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id         String    @id @default(cuid())
+  // Thread owner. A thread is keyed by the student rather than by a
+  // conversation row: students always address Student Affairs collectively and
+  // any admin may answer.
+  studentId  String
+  student    User      @relation("StudentThread", fields: [studentId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User      @relation("SentDMs", fields: [senderId], references: [id], onDelete: Cascade)
+  senderRole Role
+  content    String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([studentId, createdAt])
+  @@index([senderRole, readAt])
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum Status {
+  PENDING
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}

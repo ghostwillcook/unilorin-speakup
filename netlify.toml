@@ -1,0 +1,37 @@
+# Netlify build for the UNILORIN SpeakUp web app.
+#
+# Only the Next.js app deploys here. server/socket.mjs CANNOT run on Netlify —
+# Socket.io holds a long-lived connection and Netlify Functions, like any
+# serverless runtime, are torn down between requests. The realtime server is
+# deployed separately; see render.yaml and the Deployment section of README.md.
+#
+# Without the socket server the app degrades rather than breaks: complaints, the
+# admin console and sign-in all work, direct messages fall back to
+# GET/POST /api/dm/[studentId], and only the global chat room is unavailable.
+
+[build]
+  # `prisma generate` also runs from package.json's postinstall hook. It is
+  # repeated here because the build image caches node_modules between deploys,
+  # which means a cached install can skip postinstall and leave the previous
+  # deploy's client in place after a schema change.
+  command = "npx prisma generate && npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Prisma downloads only the engine it needs at install time; naming the
+  # platform keeps the Lambda-compatible binary out of the "missing engine"
+  # failure mode at runtime.
+  PRISMA_CLI_BINARY_TARGETS = "native,rhel-openssl-3.0.x"
+
+[[plugins]]
+  # The Next.js runtime: turns getServerSideProps and every /api route into
+  # Netlify Functions. Pages Router is fully supported.
+  package = "@netlify/plugin-nextjs"
+
+# Attachment reads and the socket handshake token are per-user credentials that
+# must never be held by Netlify's CDN. The routes already send Cache-Control
+# themselves; this is the belt to that braces, in case a future edit drops it.
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
