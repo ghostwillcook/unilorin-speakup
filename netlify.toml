@@ -15,6 +15,11 @@
   # which means a cached install can skip postinstall and leave the previous
   # deploy's client in place after a schema change.
   command = "npx prisma generate && npm run build"
+  # Declared explicitly and relatively. Left unset, the CLI resolves it to an
+  # absolute path, which makes @netlify/plugin-nextjs treat the project as a
+  # monorepo with a nested base directory and emit `/var/task/<name>` paths into
+  # the generated function entry point.
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
@@ -30,6 +35,13 @@
   # The Next.js runtime: turns getServerSideProps and every /api route into
   # Netlify Functions. Pages Router is fully supported.
   package = "@netlify/plugin-nextjs"
+
+[[plugins]]
+  # MUST stay after @netlify/plugin-nextjs: it repairs the server handler that
+  # plugin generates, and hooks run in declaration order, so listing it first
+  # would run against a file that does not exist yet. A no-op on Linux; see
+  # netlify/plugins/fix-windows-paths/index.js for why Windows needs it.
+  package = "./netlify/plugins/fix-windows-paths"
 
 # Attachment reads and the socket handshake token are per-user credentials that
 # must never be held by Netlify's CDN. The routes already send Cache-Control
