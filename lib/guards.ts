@@ -135,7 +135,23 @@ export async function requirePage(
       redirect: { destination: landingFor(user.role), permanent: false },
     };
   }
-  return { user };
+
+  // getServerSideProps serializes props to JSON, and `undefined` is not
+  // serializable. NextAuth's DefaultSession adds an optional `image` to
+  // session.user that the Credentials provider never sets, so the raw object
+  // carries `image: undefined` — and every page that returns `{ props: { user } }`
+  // throws "undefined cannot be serialized". Returning an explicit SessionUser
+  // with only the declared fields keeps that stray undefined out of every page.
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      studentId: user.studentId,
+      isActive: user.isActive,
+    },
+  };
 }
 
 export function isRedirect(
