@@ -1256,6 +1256,37 @@
   outline-color: #ffffff;
 }
 
+/* --- Kickers on violet ------------------------------------------------------ */
+/* .wl-kicker is violet-on-light by design, and it is unlayered CSS — which
+   outranks Tailwind's layered utilities, so a text-white/90 on the element
+   silently loses and violet text sits on a violet hero, unreadable. Rather
+   than fighting the cascade at the call site, the violet-surface variant is
+   declared here where it wins on specificity as well. */
+.wl-on-violet .wl-kicker {
+  color: rgb(255 255 255 / 0.92);
+}
+.wl-on-violet .wl-kicker-dot {
+  background: #ffffff;
+}
+
+/* --- Marquee band: glass pills ------------------------------------------------ */
+/* The band reuses the app-wide .marquee-item, whose graphite text is illegible
+   on violet. Items become translucent glass pills — the hero button's
+   treatment — so the text rides on its own light ground. */
+.wl-band .marquee-item {
+  background: rgb(255 255 255 / 0.1);
+  border: 1px solid rgb(255 255 255 / 0.24);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border-radius: 999px;
+  padding: 0.45rem 1.15rem;
+  color: #ffffff;
+  font-weight: 600;
+}
+.wl-band .marquee-sep {
+  color: rgb(255 255 255 / 0.45);
+}
+
 /* --- Type ------------------------------------------------------------------ */
 .wl-display {
   font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;

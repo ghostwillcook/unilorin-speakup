@@ -39,14 +39,33 @@ export function useInView<T extends HTMLElement = HTMLDivElement>({
       return;
     }
 
+    // The observer callback fires before the browser has painted the initial
+    // (pre-reveal) state for anything already in the viewport — the entire
+    // first screen on a large monitor. React then applies the revealed class
+    // in the same paint, the transition has no start state to animate from,
+    // and the element simply appears: animations work on phones (where content
+    // is below the fold and reveals on scroll) but not on desktop. Scheduling
+    // the state change two frames out forces the initial state to paint first,
+    // so the transition runs. Same rAF is cancelled if the element unmounts.
+    let raf = 0;
+    const commit = (visible: boolean) => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          setInView(visible);
+        });
+      });
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            setInView(true);
+            commit(true);
             if (once) observer.disconnect();
           } else if (!once) {
-            setInView(false);
+            commit(false);
           }
         }
       },
@@ -54,7 +73,10 @@ export function useInView<T extends HTMLElement = HTMLDivElement>({
     );
 
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
   }, [threshold, rootMargin, once]);
 
   return { ref, inView };

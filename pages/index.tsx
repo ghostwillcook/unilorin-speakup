@@ -1,6 +1,7 @@
 import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 import {
   UnilorinLogo,
   StudentAffairsLogo,
@@ -76,6 +77,11 @@ const NAV = [
 ];
 
 function SiteHeader() {
+  // The section links exist only in the desktop bar otherwise; on phones this
+  // disclosure keeps them reachable. It closes on link tap, the one navigation
+  // gesture a phone user makes here.
+  const [open, setOpen] = useState(false);
+
   return (
     <header className="wl-header sticky top-0 z-20">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-3">
@@ -105,8 +111,55 @@ function SiteHeader() {
           <Link href="/auth/signin" className="wl-btn-violet">
             Get started
           </Link>
+
+          <button
+            type="button"
+            className="wl-btn-ghost -mr-2 p-2 md:hidden"
+            aria-expanded={open}
+            aria-controls="wl-mobile-nav"
+            aria-label={open ? "Close menu" : "Open menu"}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {/* Two bars, not three: it reads as "menu" without a third stroke
+                competing with the logo at this size. */}
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d={open ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 15h16"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
+          </button>
         </div>
       </div>
+
+      {open && (
+        <nav
+          id="wl-mobile-nav"
+          aria-label="Sections"
+          className="border-t border-[rgb(16_2_111/0.07)] px-5 pb-4 pt-2 md:hidden"
+        >
+          {NAV.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="wl-nav-link block py-2.5 text-base"
+              onClick={() => setOpen(false)}
+            >
+              {item.label}
+            </a>
+          ))}
+          <Link
+            href="/auth/signin"
+            className="wl-nav-link block py-2.5 text-base sm:hidden"
+            onClick={() => setOpen(false)}
+          >
+            Log in
+          </Link>
+        </nav>
+      )}
     </header>
   );
 }
@@ -187,7 +240,7 @@ function Hero() {
 
         <div className="relative mx-auto max-w-3xl">
           <Reveal>
-            <span className="wl-kicker justify-center text-white/90">
+            <span className="wl-kicker justify-center">
               <span className="wl-kicker-dot" aria-hidden="true" />
               University of Ilorin · Students Affairs Unit
             </span>
