@@ -1203,3 +1203,475 @@
     color: rgb(var(--graphite-rgb) / 0.62) !important;
   }
 }
+
+/* ===========================================================================
+   Landing page — Wollo design language
+   ---------------------------------------------------------------------------
+   A distinct visual system for the public landing page only, from the
+   "Wollo" UI specification: playful neo-brutalism softened by glass, an
+   electric deep-violet primary, extreme corner radii, colour-tinted ambient
+   shadows, and matte (grain-textured) floating objects.
+
+   Everything is namespaced with a .wl- prefix and scoped under .wl-page so
+   not one rule can leak into the student console or the admin console —
+   those keep the app's original design system above untouched. Tokens are
+   declared on .wl-page itself for the same reason: a variable on :root
+   would be visible app-wide and invite reuse.
+   =========================================================================== */
+.wl-page {
+  /* Palette. Violet is the primary; pink/purple/yellow are data accents that
+     appear one at a time (a pill, a badge, a bar) and never as fills for
+     large areas, per the spec's "accents, not paint" intent. */
+  --wl-violet: #10026f;
+  --wl-violet-deep: #0b0149;
+  --wl-pink: #dc1d49;
+  --wl-purple: #ac2ebc;
+  --wl-yellow: #f4ac0b;
+  --wl-grey: #babac2;
+  --wl-ink: #110c1e;
+  --wl-canvas: #f8f9fa;
+  --wl-rule: #e5e7eb;
+
+  /* The spec's ambient shadow — violet-tinted, never black. */
+  --wl-shadow: 0 24px 48px rgb(16 2 111 / 0.08);
+  --wl-shadow-lift: 0 32px 72px rgb(16 2 111 / 0.14);
+
+  /* Radius standard: pills are 999px (on the buttons below), structural
+     cards 24-32px. */
+  --wl-r-card: 24px;
+  --wl-r-card-lg: 32px;
+
+  background: var(--wl-canvas);
+  color: var(--wl-ink);
+  font-family: var(--wl-body), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+}
+
+/* Focus stays visible on the new surfaces too. Violet ring, white offset. */
+.wl-page :focus-visible {
+  outline: 2px solid var(--wl-violet);
+  outline-offset: 3px;
+}
+.wl-page .wl-on-violet :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* --- Type ------------------------------------------------------------------ */
+.wl-display {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.94;
+  text-wrap: balance;
+}
+.wl-h2 {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.9rem, 4.5vw, 3rem);
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.wl-h3 {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.wl-body-lg {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: rgb(17 12 30 / 0.66);
+}
+.wl-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--wl-violet);
+}
+.wl-kicker-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--wl-violet);
+  flex: none;
+}
+
+/* --- Buttons ---------------------------------------------------------------- */
+/* The violet pill is the landing page's one loud element, mirroring how the
+   app console treats its solid pill. Outline is the quiet partner used on
+   the violet hero, where a violet-on-violet fill would vanish. */
+.wl-btn-violet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.6rem;
+  border-radius: 999px;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  background: var(--wl-violet);
+  color: #ffffff;
+  border: 1px solid var(--wl-violet);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.25s ease,
+    transform 0.15s ease;
+}
+.wl-btn-violet:hover {
+  background: var(--wl-violet-deep);
+  box-shadow: var(--wl-shadow-lift);
+  transform: translateY(-2px);
+}
+.wl-btn-violet:active {
+  transform: translateY(0);
+}
+
+.wl-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.6rem;
+  border-radius: 999px;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  background: transparent;
+  color: #ffffff;
+  border: 1.5px solid rgb(255 255 255 / 0.55);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+.wl-btn-outline:hover {
+  background: rgb(255 255 255 / 0.12);
+  border-color: rgb(255 255 255 / 0.9);
+  transform: translateY(-2px);
+}
+
+.wl-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: rgb(17 12 30 / 0.72);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.wl-btn-ghost:hover {
+  color: var(--wl-violet);
+  background: rgb(16 2 111 / 0.06);
+}
+
+/* --- Cards ------------------------------------------------------------------ */
+.wl-card {
+  background: #ffffff;
+  border-radius: var(--wl-r-card);
+  box-shadow: var(--wl-shadow);
+  border: 1px solid rgb(16 2 111 / 0.05);
+}
+.wl-card-hover {
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease;
+}
+.wl-card-hover:hover {
+  transform: scale(1.02);
+  box-shadow: var(--wl-shadow-lift);
+}
+
+/* Saturated feature cards — solid fills carry white type, so their body copy
+   is rgb-white at 0.85 rather than the grey used on white cards. */
+.wl-feature {
+  border-radius: var(--wl-r-card);
+  color: #ffffff;
+  padding: 1.75rem;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 19rem;
+  box-shadow: var(--wl-shadow);
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease;
+}
+.wl-feature:hover {
+  transform: scale(1.02);
+  box-shadow: var(--wl-shadow-lift);
+}
+.wl-feature-1 {
+  background: var(--wl-violet);
+}
+.wl-feature-2 {
+  background: var(--wl-purple);
+}
+.wl-feature-3 {
+  background: var(--wl-pink);
+}
+
+.wl-feature-num {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(3.5rem, 7vw, 5rem);
+  line-height: 1;
+  color: rgb(255 255 255 / 0.32);
+  letter-spacing: -0.04em;
+}
+.wl-feature-tag {
+  align-self: flex-start;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.16);
+  border: 1px solid rgb(255 255 255 / 0.28);
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.wl-feature-arrow {
+  position: absolute;
+  right: 1.4rem;
+  bottom: 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--wl-ink);
+  border: none;
+  cursor: pointer;
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease;
+}
+.wl-feature-arrow:hover {
+  transform: scale(1.1) rotate(-8deg);
+  box-shadow: var(--wl-shadow-lift);
+}
+
+/* --- Hero diorama ------------------------------------------------------------ */
+.wl-hero {
+  position: relative;
+  background:
+    radial-gradient(
+      68rem 44rem at 78% -18%,
+      rgb(172 46 188 / 0.35),
+      transparent 60%
+    ),
+    radial-gradient(
+      52rem 38rem at 8% 112%,
+      rgb(220 29 73 / 0.22),
+      transparent 58%
+    ),
+    var(--wl-violet);
+  border-radius: var(--wl-r-card-lg);
+  color: #ffffff;
+  overflow: visible;
+}
+
+/* Matte grain over the 3D objects. A feTurbulence rect as a data URI at
+   overlay blend kills the plastic gloss and leaves the clay-like finish the
+   spec asks for. Inherited border-radius keeps it clipped to each shape. */
+.wl-shape {
+  position: relative;
+  pointer-events: none;
+}
+.wl-shape::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+  mix-blend-mode: overlay;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Idle float — slow enough to read as ambience. Parallax (JS) adds the
+   scroll-linked translation on top via a wrapper, so the two transforms
+   never fight over the same element. */
+@keyframes wl-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--wl-tilt, 0deg));
+  }
+  50% {
+    transform: translateY(-14px) rotate(var(--wl-tilt, 0deg));
+  }
+}
+.wl-float {
+  animation: wl-float 7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.wl-float-slow {
+  animation-duration: 9.5s;
+}
+
+/* --- Pills, chips, tags -------------------------------------------------------- */
+.wl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.wl-pill-white {
+  background: #ffffff;
+  border: 1px solid var(--wl-rule);
+  color: var(--wl-ink);
+  box-shadow: 0 8px 20px rgb(16 2 111 / 0.07);
+}
+.wl-pill-violet {
+  background: var(--wl-violet);
+  color: #ffffff;
+}
+.wl-pill-yellow {
+  background: var(--wl-yellow);
+  color: var(--wl-ink);
+}
+.wl-pill-grey {
+  background: rgb(186 186 194 / 0.22);
+  color: rgb(17 12 30 / 0.75);
+}
+
+.wl-badge-angle {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  border-radius: 999px;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  transform: rotate(-5deg);
+  box-shadow: 0 10px 22px rgb(16 2 111 / 0.18);
+}
+
+/* --- Stat cards ------------------------------------------------------------------ */
+.wl-stat-value {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(3.25rem, 6.5vw, 5.25rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--wl-violet);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- FAQ accordion ------------------------------------------------------------------ */
+.wl-faq-item {
+  border-bottom: 1px solid var(--wl-rule);
+}
+.wl-faq-q {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.35rem 0.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--wl-ink);
+  transition: color 0.2s ease;
+}
+.wl-faq-q:hover {
+  color: var(--wl-violet);
+}
+.wl-faq-chev {
+  flex: none;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wl-faq-q[aria-expanded="true"] .wl-faq-chev {
+  transform: rotate(180deg);
+}
+.wl-faq-q[aria-expanded="true"] {
+  color: var(--wl-violet);
+}
+/* The 0fr -> 1fr grid trick animates height without measuring it. */
+.wl-faq-a {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wl-faq-a[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.wl-faq-a-inner {
+  overflow: hidden;
+}
+.wl-faq-a-text {
+  padding: 0 0.25rem 1.4rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgb(17 12 30 / 0.66);
+  max-width: 42rem;
+}
+
+/* --- Marquee band on violet ----------------------------------------------------------- */
+.wl-band {
+  background: var(--wl-violet);
+  color: rgb(255 255 255 / 0.85);
+}
+
+/* --- Header ---------------------------------------------------------------------------- */
+.wl-header {
+  background: rgb(248 249 250 / 0.82);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border-bottom: 1px solid rgb(16 2 111 / 0.07);
+}
+.wl-nav-link {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: rgb(17 12 30 / 0.68);
+  transition: color 0.2s ease;
+}
+.wl-nav-link:hover {
+  color: var(--wl-violet);
+}
+
+/* --- Reduced motion ---------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .wl-float {
+    animation: none !important;
+  }
+  .wl-card-hover,
+  .wl-feature,
+  .wl-feature-arrow,
+  .wl-btn-violet,
+  .wl-btn-outline {
+    transition: none !important;
+  }
+  .wl-card-hover:hover,
+  .wl-feature:hover,
+  .wl-btn-violet:hover,
+  .wl-btn-outline:hover {
+    transform: none !important;
+  }
+}

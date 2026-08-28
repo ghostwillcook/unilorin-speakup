@@ -90,6 +90,20 @@ const eslintConfig = [
       "import/no-anonymous-default-export": "off",
     },
   },
+
+  {
+    /**
+     * Node build tooling — the Netlify deploy plugin and its shared fixer
+     * script — is CommonJS by necessity: Netlify loads local plugins with
+     * require(), so ESM would simply not run. The next/typescript preset's
+     * no-require-imports rule assumes bundled application code and has no
+     * opinion worth honouring here.
+     */
+    files: ["netlify/plugins/**/*.js", "scripts/**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

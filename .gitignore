@@ -13,3 +13,7 @@ next-env.d.ts
 
 # Claude Code personal/local settings (permission allowlist etc.)
 .claude/settings.local.json
+
+# Deployment report holds live demo passwords — never commit
+*.docx
+~$*.docx
