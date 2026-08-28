@@ -1,12 +1,8 @@
 import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import {
-  UnilorinLogo,
-  StudentAffairsLogo,
-  SpeakUpWordmark,
-} from "@/components/Logo";
+import { useEffect, useState } from "react";
+import { UnilorinLogo, SpeakUpWordmark } from "@/components/Logo";
 import { Marquee, Reveal, SplitLines, Stagger } from "@/components/Motion";
 import CountUp from "@/components/landing/CountUp";
 import Faq from "@/components/landing/Faq";
@@ -82,16 +78,48 @@ function SiteHeader() {
   // gesture a phone user makes here.
   const [open, setOpen] = useState(false);
 
+  // Fold the bar away on scroll down, bring it back on scroll up — phones
+  // only, where the bar costs a meaningful slice of viewport. matchMedia (not
+  // window.innerWidth in render, which hydrates differently on the server)
+  // decides which regime applies, and stays live across rotation/resizes.
+  // An open menu always pins the bar visible.
+  const [hidden, setHidden] = useState(false);
+  const [isPhone, setIsPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    setIsPhone(mq.matches);
+    const onMq = (e: MediaQueryListEvent) => setIsPhone(e.matches);
+    mq.addEventListener("change", onMq);
+
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      // 8px dead-zone: sub-pixel jitter and rubber-banding at the top of a
+      // bounce shouldn't toggle the bar.
+      if (Math.abs(y - lastY) < 8) return;
+      setHidden(y > lastY && y > 64);
+      lastY = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      mq.removeEventListener("change", onMq);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  const folded = isPhone && hidden && !open;
+
   return (
-    <header className="wl-header sticky top-0 z-20">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-3">
-        <div className="flex items-center gap-3">
-          <UnilorinLogo size={38} />
-          <div className="hidden h-8 w-px bg-black/10 sm:block" />
-          <div className="hidden sm:block">
-            <StudentAffairsLogo size={34} />
-          </div>
-          <span className="ml-1 text-base sm:text-lg">
+    <header
+      className={`wl-header sticky top-0 z-20 ${folded ? "wl-header-hidden" : ""}`}
+    >
+      {/* gap-2 rather than gap-3: on a phone the logo, wordmark and CTA are
+          one visual group; the desktop breathing room is whitespace the narrow
+          bar cannot spare. py-2.5 for the same reason. */}
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-5 py-2.5 sm:gap-4 sm:py-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <UnilorinLogo size={34} />
+          <span className="ml-0.5 text-sm sm:ml-1 sm:text-lg">
             <SpeakUpWordmark />
           </span>
         </div>
@@ -104,11 +132,14 @@ function SiteHeader() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-1.5">
-          <Link href="/auth/signin" className="wl-btn-ghost hidden sm:inline-flex">
+        <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* Hidden below md rather than sm: at 640-768px the bar would
+              otherwise wrap the ghost link or crowd the CTA. The hamburger's
+              menu carries Log in there. */}
+          <Link href="/auth/signin" className="wl-btn-ghost hidden md:inline-flex">
             Log in
           </Link>
-          <Link href="/auth/signin" className="wl-btn-violet">
+          <Link href="/auth/signin" className="wl-btn-violet whitespace-nowrap">
             Get started
           </Link>
 
@@ -153,7 +184,7 @@ function SiteHeader() {
           ))}
           <Link
             href="/auth/signin"
-            className="wl-nav-link block py-2.5 text-base sm:hidden"
+            className="wl-nav-link block py-2.5 text-base"
             onClick={() => setOpen(false)}
           >
             Log in
@@ -181,7 +212,9 @@ function SiteHeader() {
 function Hero() {
   return (
     <section className="mx-auto w-full max-w-6xl px-5 pb-10 pt-10 sm:pt-14">
-      <div className="wl-hero wl-on-violet px-6 py-16 text-center sm:px-12 sm:py-24">
+      {/* px-4 on phones: the kicker is nowrap at this width, and every
+          horizontal millimetre is text that no longer has to break. */}
+      <div className="wl-hero wl-on-violet px-4 py-16 text-center sm:px-12 sm:py-24">
         {/* Floating objects — hidden below md where they would collide with the
             headline rather than frame it. */}
         <ParallaxObject
@@ -240,7 +273,10 @@ function Hero() {
 
         <div className="relative mx-auto max-w-3xl">
           <Reveal>
-            <span className="wl-kicker justify-center">
+            {/* max-w-none at this level: the kicker inside is nowrap, and a
+                centered constrained wrapper would let it overflow visually
+                rather than be measured against the true container width. */}
+            <span className="wl-kicker justify-center max-w-none">
               <span className="wl-kicker-dot" aria-hidden="true" />
               University of Ilorin · Students Affairs Unit
             </span>
@@ -413,22 +449,39 @@ function BentoGrid() {
           </div>
         </div>
 
-        {/* DM */}
-        <div className="wl-card wl-card-hover p-7 lg:col-span-2">
+        {/* DM — white type on violet: the Unit's own channel, not another
+            white panel. No label chips; the arrow says it plainly. */}
+        <div className="wl-card-dark wl-card-hover p-7 lg:col-span-2">
           <h3 className="wl-h3 text-xl">A direct line to the Unit</h3>
-          <p className="mt-3 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
+          <p className="mt-3 text-sm leading-relaxed text-white/80">
             Not everything needs a formal complaint. Message the Students
             Affairs Unit privately and keep the whole conversation in one
             place.
           </p>
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <span className="wl-pill wl-pill-white">You</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 12h16M14 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <p className="mt-6 flex items-center gap-3 text-sm font-semibold text-white">
+            You
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M7 10h8M9 6.5 5.5 10 9 13.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity="0.7"
+              />
+              <path
+                d="M17 14H9M15 17.5 18.5 14 15 10.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity="0.7"
+              />
             </svg>
-            <span className="wl-pill wl-pill-violet">Student Affairs</span>
-            <span className="wl-pill wl-pill-grey">always private</span>
-          </div>
+            Student Affairs
+          </p>
         </div>
       </Stagger>
     </section>

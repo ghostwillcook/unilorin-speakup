@@ -63,6 +63,13 @@
     background-color: var(--color-canvas);
     color-scheme: light;
     scroll-behavior: smooth;
+    /* Mobile browsers flash a grey box over whatever is tapped. The app's
+       feedback is its own :active/hover states, so the system highlight is
+       noise; long-press selection still works — only the tap flash goes. */
+    -webkit-tap-highlight-color: transparent;
+    /* Kills the double-tap-zoom delay on touch without disabling pinch zoom,
+       so taps feel instant. */
+    touch-action: manipulation;
   }
 
   body {
@@ -1331,6 +1338,17 @@
   background: var(--wl-violet);
   flex: none;
 }
+/* The hero kicker must stay on one line: the separator dot orphaned at a line
+   end is the misalignment it caused on phones. Small screens get a size that
+   fits the longest kicker in the available width — measure, not guess. */
+@media (max-width: 640px) {
+  .wl-kicker {
+    font-size: 0.5625rem;
+    letter-spacing: 0.09em;
+    gap: 0.4rem;
+    white-space: nowrap;
+  }
+}
 
 /* --- Buttons ---------------------------------------------------------------- */
 /* The violet pill is the landing page's one loud element, mirroring how the
@@ -1676,6 +1694,12 @@
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   border-bottom: 1px solid rgb(16 2 111 / 0.07);
+  /* For the mobile fold-away (see .wl-header-hidden): a transform-only move,
+     so the slide never triggers layout. */
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wl-header-hidden {
+  transform: translateY(-100%);
 }
 .wl-nav-link {
   font-weight: 600;
@@ -1686,11 +1710,40 @@
 .wl-nav-link:hover {
   color: var(--wl-violet);
 }
+/* Phone widths: the full pill crowds a narrow bar, so it sheds padding and a
+   point of size. Content width is the constraint, not comfort. */
+@media (max-width: 640px) {
+  .wl-btn-violet {
+    padding: 0.5rem 1.05rem;
+    font-size: 0.85rem;
+  }
+}
+
+/* --- Violet card (bento variant) --------------------------------------------------------- */
+/* A white-type card for content that should read as "the Unit's own channel"
+   rather than another white panel. Same radius and shadow family as .wl-card,
+   so it sits in the same grid without introducing a new depth system. */
+.wl-card-dark {
+  background: var(--wl-violet);
+  border: none;
+  border-radius: var(--wl-r-card);
+  box-shadow: var(--wl-shadow);
+  color: #ffffff;
+}
+.wl-card-dark .wl-h3 {
+  color: #ffffff;
+}
 
 /* --- Reduced motion ---------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .wl-float {
     animation: none !important;
+  }
+  /* The fold-away still functions (the header ends up where it belongs), only
+     the slide becomes a jump — consistent with how every other transition is
+     treated here. */
+  .wl-header {
+    transition: none !important;
   }
   .wl-card-hover,
   .wl-feature,

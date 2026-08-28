@@ -10,11 +10,7 @@ import { authOptions } from "@/lib/auth";
 import { landingFor } from "@/lib/roles";
 import GlassCard from "@/components/GlassCard";
 import NeonButton from "@/components/NeonButton";
-import {
-  UnilorinLogo,
-  StudentAffairsLogo,
-  SpeakUpWordmark,
-} from "@/components/Logo";
+import { UnilorinLogo, SpeakUpWordmark } from "@/components/Logo";
 import { Reveal } from "@/components/Motion";
 
 /* ------------------------------------------------------------------------- */
@@ -192,11 +188,11 @@ export default function SignInPage() {
           <Reveal>
           <GlassCard className="mt-4 p-7 sm:p-8">
             <div className="flex flex-col items-center text-center">
-              <div className="flex items-center gap-3">
-                <UnilorinLogo size={52} />
-                <div className="h-9 w-px bg-line" aria-hidden="true" />
-                <StudentAffairsLogo size={48} />
-              </div>
+              {/* One crest, not two: the Students Affairs Unit shield was a
+                  placeholder (no real asset) and duplicated the university
+                  identity the UNILORIN crest already carries — this is a Unit
+                  initiative on the university's platform. */}
+              <UnilorinLogo size={64} />
 
               <span className="mt-4 text-xl">
                 <SpeakUpWordmark />
