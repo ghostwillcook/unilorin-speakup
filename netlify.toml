@@ -18,10 +18,13 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # Prisma downloads only the engine it needs at install time; naming the
-  # platform keeps the Lambda-compatible binary out of the "missing engine"
-  # failure mode at runtime.
-  PRISMA_CLI_BINARY_TARGETS = "native,rhel-openssl-3.0.x"
+  # Prisma engine targets are declared in prisma/schema.prisma
+  # (binaryTargets = ["native", "rhel-openssl-3.0.x"]) and that is the single
+  # source of truth. The PRISMA_CLI_BINARY_TARGETS env var is intentionally NOT
+  # set: Prisma 6.7+ rejects "native" as an env-var value ("Unknown binaryTarget
+  # native"), and the schema already generates both the build machine's engine
+  # and the rhel-openssl engine the Netlify Functions runtime (Amazon Linux)
+  # needs.
 
 [[plugins]]
   # The Next.js runtime: turns getServerSideProps and every /api route into

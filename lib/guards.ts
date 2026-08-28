@@ -92,7 +92,10 @@ export async function guarded(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected server error.";
-    // eslint-disable-next-line no-console -- server-side diagnostics
+    // Server-side diagnostics: the swallowed throw still has to land somewhere
+    // a maintainer can read. (Was an eslint-disable for no-console, but
+    // eslint-config-next never enables that rule, so the directive was inert
+    // and ESLint reported it as unused.)
     console.error("[speakup:api]", err);
     if (!res.headersSent) res.status(500).json({ error: message });
   }

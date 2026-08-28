@@ -13,8 +13,11 @@ export function UnilorinLogo({ size = 64 }: { size?: number }) {
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- plain img keeps the
-    // onError fallback simple; next/image swallows the error boundary.
+    // A plain img keeps the onError fallback simple; next/image swallows the
+    // error boundary. The directive has to be the last comment line before the
+    // element — eslint-disable-next-line applies to the literal next line, so a
+    // description wrapped onto its own line would aim it at the comment.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src="/unilorin-logo.jpeg"
       alt="University of Ilorin"

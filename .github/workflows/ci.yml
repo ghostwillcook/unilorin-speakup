@@ -1,0 +1,144 @@
+# Continuous integration for the UNILORIN SpeakUp web app.
+#
+# This is a correctness gate, not a deployment: it proves the tree installs,
+# generates, type-checks, lints and builds. Deployment is separate and is NOT
+# triggered by this workflow — the Netlify site has no git repo linked, so the
+# web app is released with `netlify deploy --prod --build` from a working copy,
+# and the realtime server deploys from render.yaml. A green run here therefore
+# means "this tree is releasable", not "this tree is released".
+#
+# server/socket.mjs is deliberately not exercised here. tsconfig.json excludes
+# `server`, and there is no test suite yet, so the only honest thing CI can say
+# about the socket server today is nothing.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push while the first run is still going makes the first run's verdict
+# worthless — it describes a tree that no longer exists. Cancel it rather than
+# letting stale red or stale green sit on the branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The job only ever reads the tree. Dropping the default token to read-only
+# means a compromised transitive dependency executing during `npm ci`'s
+# postinstall cannot push commits or edit releases with it.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    # -----------------------------------------------------------------------
+    # Why these dummy values are both safe and necessary
+    #
+    # Nothing here is a secret and nothing here needs to be, because the app is
+    # built so that no credential is required in order to *compile* it:
+    #
+    #   * lib/prisma.ts exports a Proxy that defers `new PrismaClient()` until
+    #     the first property access, so importing it — which Next's "Collecting
+    #     page data" pass does for every page — opens no connection.
+    #   * lib/supabase.ts defers createClient() the same way, behind
+    #     getSupabaseAdmin() / isStorageConfigured().
+    #   * every page that reads data uses getServerSideProps, which Next runs
+    #     per request and never during `next build`.
+    #
+    # What the toolchain does insist on is that the variables *exist*:
+    #
+    #   * DATABASE_URL and DIRECT_URL are resolved by prisma/schema.prisma's
+    #     `env(...)` calls while `prisma generate` validates the schema. With
+    #     either absent it aborts with P1012 "Environment variable not found"
+    #     and generates nothing. The values only have to parse as postgres
+    #     URLs; they must not point anywhere real, and a loopback port with no
+    #     listener means an accidental query fails fast instead of reaching
+    #     live student data.
+    #   * NEXTAUTH_SECRET: lib/auth.ts falls back to a dev-only secret when
+    #     NODE_ENV !== "production", and `next build` sets NODE_ENV=production.
+    #     A throwaway keeps CI off that fallback, so if NextAuth ever starts
+    #     hard-failing on a missing secret we learn it here, not in production.
+    #   * the NEXT_PUBLIC_* pair is inlined into the client bundle at build
+    #     time. Placeholders keep the CI bundle the same shape as a real one
+    #     and make leakage checkable: the emitted JS should contain
+    #     ci-placeholder.supabase.co and no other Supabase host.
+    #
+    # These sit at job level rather than on individual steps because
+    # package.json's `postinstall` hook runs `prisma generate` — so the two
+    # database URLs must already be set by the time `npm ci` runs, or the
+    # install itself fails.
+    #
+    # If CI ever genuinely needs a real secret, that is the signal that
+    # something started reaching a live service at build time. Fix that instead
+    # of adding the secret.
+    # -----------------------------------------------------------------------
+    env:
+      DATABASE_URL: postgresql://speakup_ci:speakup_ci@127.0.0.1:5432/speakup_ci?pgbouncer=true
+      DIRECT_URL: postgresql://speakup_ci:speakup_ci@127.0.0.1:5432/speakup_ci
+      NEXTAUTH_SECRET: ci-dummy-secret-not-used-to-sign-any-real-session
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      # Named to be unmistakable in a diff: a real service-role key bypasses
+      # row level security entirely and must never appear in a tracked file.
+      SUPABASE_SERVICE_ROLE_KEY: not-a-real-key-ci-placeholder-only
+      SUPABASE_STORAGE_BUCKET: complaint-files
+      # The telemetry notice is log noise in a transcript nobody reads until
+      # something is already broken.
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Node 20 matches NODE_VERSION in netlify.toml and the Amazon Linux 2023
+      # / Node 20 runtime both deploy targets run. CI on a different major is
+      # CI testing something production will never execute.
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # Caches ~/.npm, the package download cache — not node_modules. So
+          # `npm ci` still wipes and rebuilds the tree, and still runs
+          # postinstall, which is what we want.
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly
+      # package-lock.json and fails outright if the lockfile has drifted from
+      # package.json, which is a real problem worth failing on rather than
+      # silently resolving away.
+      - name: Install dependencies
+        run: npm ci
+
+      # Repeated even though postinstall just did it, for the reason
+      # netlify.toml gives — and because a generate failure deserves its own
+      # red step instead of being buried in install output. It also has to
+      # precede the next two steps on principle: @prisma/client's types are
+      # generated, so tsc has nothing to check model calls against until this
+      # has run.
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      # Note for future readers: next-env.d.ts is gitignored, so it is absent
+      # on a fresh checkout and this step runs without it. That is fine —
+      # tsconfig.json lists it under `include`, where a pattern matching no
+      # file is ignored rather than fatal, and the app imports its Next types
+      # explicitly instead of relying on those ambient references.
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Kept last because it is the expensive step and the only one that proves
+      # the pages actually compile and that "Collecting page data" can import
+      # every module with no database in reach. `next build` type-checks and
+      # lints again itself; the earlier steps exist so a type or lint error is
+      # reported as such instead of as a build failure.
+      - name: Build
+        run: npm run build

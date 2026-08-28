@@ -592,6 +592,11 @@ function printTable(headers: string[], rows: string[][]): void {
   console.log(rule);
 }
 
+/** The passwords that ship in .env.local.example and the README. A seed run that
+ *  still uses either of them is publishing its own credentials, which is worth
+ *  shouting about; one that does not should not be told it is. */
+const PUBLIC_DEFAULTS = new Set(["ChangeMe123!", "Student123!"]);
+
 function printCredentials(): void {
   console.log("\n  Seeded accounts\n");
 
@@ -599,6 +604,22 @@ function printCredentials(): void {
     ["Role", "Email", "Student ID", "Password"],
     ACCOUNTS.map((a) => [a.role, a.email, a.studentId, a.password]),
   );
+
+  const usingDefaults = ACCOUNTS.some((a) => PUBLIC_DEFAULTS.has(a.password));
+
+  if (!usingDefaults) {
+    console.log(
+      [
+        "",
+        "  Passwords above are the values set in .env.local, not the shipped",
+        "  defaults. They are still PLAINTEXT in that file and in this output:",
+        "  keep .env.local out of git (it is gitignored) and clear your scrollback",
+        "  if you ran this anywhere shared.",
+        "",
+      ].join("\n"),
+    );
+    return;
+  }
 
   console.log(
     [
