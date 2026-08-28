@@ -8,10 +8,8 @@ import { signIn, getSession } from "next-auth/react";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { landingFor } from "@/lib/roles";
-import GlassCard from "@/components/GlassCard";
-import NeonButton from "@/components/NeonButton";
 import { UnilorinLogo, SpeakUpWordmark } from "@/components/Logo";
-import { Reveal } from "@/components/Motion";
+import { wlBody, wlDisplay } from "@/lib/fonts";
 
 /* ------------------------------------------------------------------------- */
 /* Error mapping                                                              */
@@ -105,6 +103,7 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(() =>
     queryError ? noticeFor(queryError) : null,
@@ -176,37 +175,73 @@ export default function SignInPage() {
         <title>Sign in · UNILORIN SpeakUp</title>
       </Head>
 
-      <main className="flex min-h-screen flex-col items-center justify-center px-5 py-12">
-        <div className="w-full max-w-md">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-graphite"
-          >
-            <span aria-hidden="true">&larr;</span> Back to home
-          </Link>
-
-          <Reveal>
-          <GlassCard className="mt-4 p-7 sm:p-8">
-            <div className="flex flex-col items-center text-center">
-              {/* One crest, not two: the Students Affairs Unit shield was a
-                  placeholder (no real asset) and duplicated the university
-                  identity the UNILORIN crest already carries — this is a Unit
-                  initiative on the university's platform. */}
-              <UnilorinLogo size={64} />
-
-              <span className="mt-4 text-xl">
-                <SpeakUpWordmark />
+      {/* The auth spec's canvas: soft off-white, the 480px elevated card
+          centered on desktop, full-height with 24px margins on mobile. The
+          wl-page wrapper brings the Wollo tokens and fonts to exactly this
+          surface and no further. */}
+      <main
+        className={`wl-page flex min-h-screen flex-col items-center px-6 py-10 sm:py-14 ${wlDisplay.variable} ${wlBody.variable}`}
+      >
+        <div className="w-full max-w-[480px]">
+          {/* Back as the spec's floating circular glass orb. */}
+          <div className="flex items-center justify-between">
+            <Link href="/" className="wl-orb" aria-label="Back to home">
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M15 6l-6 6 6 6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </Link>
+            <div className="flex items-center gap-2">
+              <UnilorinLogo size={28} />
+              <span className="text-sm">
+                <SpeakUpWordmark compact />
               </span>
+            </div>
+          </div>
 
-              <h1 className="display-sm mt-3">Sign in</h1>
-              <p className="mt-1.5 text-sm text-muted">
-                Students Affairs Unit &middot; University of Ilorin
+          {/* The card's top padding leaves a nest for the diorama lock, which
+              breaks the card's top border the way the landing hero's objects
+              break its frame. */}
+          <div className="wl-auth-card relative mt-8 px-6 pb-8 pt-14 sm:px-8">
+            <DioramaLock />
+
+            <div className="text-center">
+              <h1 className="wl-auth-title">Welcome Back</h1>
+              <p className="wl-auth-sub mt-1.5">
+                Enter your credentials to access your account
               </p>
             </div>
 
             {notice && (
-              <div className="notice notice-error mt-6" role="alert">
-                <WarningIcon />
+              <div className="wl-auth-notice mt-6" role="alert">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  className="mt-0.5 shrink-0"
+                >
+                  <path
+                    d="M12 4.5 21 20H3L12 4.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M12 10v4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  />
+                  <circle cx="12" cy="17.4" r="1" fill="currentColor" />
+                </svg>
                 <span>
                   {notice.message}
                   {notice.hint && (
@@ -218,10 +253,10 @@ export default function SignInPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <form onSubmit={handleSubmit} className="mt-7 space-y-5">
               <div>
-                <label htmlFor="email" className="field-label">
-                  Email
+                <label htmlFor="email" className="wl-label">
+                  Email Address
                 </label>
                 <input
                   id="email"
@@ -231,7 +266,7 @@ export default function SignInPage() {
                   autoComplete="email"
                   autoFocus
                   inputMode="email"
-                  className="field"
+                  className="wl-input"
                   placeholder="you@students.unilorin.edu.ng"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -241,96 +276,160 @@ export default function SignInPage() {
 
               <div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <label htmlFor="studentId" className="field-label">
+                  <label htmlFor="studentId" className="wl-label">
                     Student ID
                   </label>
-                  <span
-                    id="studentId-scope"
-                    className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted"
-                  >
-                    Students only
-                  </span>
+                  <span className="wl-label-aux">Students only</span>
                 </div>
                 <input
                   id="studentId"
                   name="studentId"
                   type="text"
                   autoComplete="username"
-                  aria-describedby="studentId-scope studentId-hint"
-                  className="field"
+                  aria-describedby="studentId-hint"
+                  className="wl-input"
                   placeholder="19/52HL123"
                   value={studentId}
                   onChange={(e) => setStudentId(e.target.value)}
                   disabled={submitting}
                 />
-                <p id="studentId-hint" className="mt-1.5 text-xs text-muted">
+                <p id="studentId-hint" className="mt-1.5 px-4 text-xs text-[var(--wl-slate)]">
                   Administrators can leave this blank.
                 </p>
               </div>
 
               <div>
-                <label htmlFor="password" className="field-label">
+                <label htmlFor="password" className="wl-label">
                   Password
                 </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  className="field"
-                  placeholder="Your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={submitting}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    autoComplete="current-password"
+                    className="wl-input pr-12"
+                    placeholder="Your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={submitting}
+                  />
+                  <button
+                    type="button"
+                    className="wl-input-eye"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((v) => !v)}
+                    tabIndex={0}
+                  >
+                    {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
+                </div>
               </div>
 
-              <NeonButton
+              <button
                 type="submit"
-                className="w-full"
-                loading={submitting}
+                className="wl-auth-submit"
                 disabled={submitting}
+                aria-busy={submitting}
               >
-                {submitting ? "Signing in…" : "Sign in"}
-              </NeonButton>
+                {submitting ? "Signing in…" : "Sign In"}
+              </button>
             </form>
 
-            <p className="mt-6 border-t border-line pt-5 text-center text-xs leading-relaxed text-muted">
+            <p className="mt-6 border-t border-[var(--wl-rule)] pt-5 text-center text-xs leading-relaxed text-[var(--wl-slate)]">
               Accounts are issued by the Students Affairs Unit. Your name is
               never shown to other students in the live chat.
             </p>
-          </GlassCard>
-          </Reveal>
+          </div>
         </div>
       </main>
     </>
   );
 }
 
-function WarningIcon() {
+/* ------------------------------------------------------------------------- */
+/* Diorama graphic — the spec's floating clay lock                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * A matte clay lock breaking the card's top border. Same recipe as the landing
+ * shapes: soft gradient "clay" fills wrapped in .wl-shape, whose ::after lays
+ * the grain that kills the plastic gloss. It overlaps the card edge via the
+ * negative top inset, and its idle float is the landing page's own keyframes.
+ */
+function DioramaLock() {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
+    <div
+      className="absolute -top-9 left-1/2 w-[4.5rem] -translate-x-1/2"
       aria-hidden="true"
-      className="mt-0.5 shrink-0"
     >
+      <span className="wl-float block" style={{ "--wl-tilt": "0deg" } as React.CSSProperties}>
+        <span className="wl-shape block h-auto w-full drop-shadow-[0_16px_32px_rgba(16,2,111,0.35)]">
+          <svg viewBox="0 0 96 104" width="100%" height="auto">
+            <defs>
+              <linearGradient id="wl-lock-body" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#8fd0ff" />
+                <stop offset="1" stopColor="#4a7dff" />
+              </linearGradient>
+              <linearGradient id="wl-lock-shackle" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#e9deff" />
+                <stop offset="1" stopColor="#ac2ebc" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M28 46V34a20 20 0 0 1 40 0v12"
+              fill="none"
+              stroke="url(#wl-lock-shackle)"
+              strokeWidth="10"
+              strokeLinecap="round"
+            />
+            <rect x="14" y="44" width="68" height="52" rx="18" fill="url(#wl-lock-body)" />
+            <circle cx="48" cy="66" r="7" fill="#10026f" />
+            <path
+              d="M48 71v9"
+              stroke="#10026f"
+              strokeWidth="6"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
-        d="M12 4.5 21 20H3L12 4.5Z"
+        d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinejoin="round"
       />
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
-        d="M12 10v4.5"
+        d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
+      <path
+        d="M4 4l16 16"
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
       />
-      <circle cx="12" cy="17.4" r="1" fill="currentColor" />
     </svg>
   );
 }

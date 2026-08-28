@@ -1,7 +1,7 @@
 import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { UnilorinLogo, SpeakUpWordmark } from "@/components/Logo";
 import { Marquee, Reveal, SplitLines, Stagger } from "@/components/Motion";
 import CountUp from "@/components/landing/CountUp";
@@ -16,6 +16,7 @@ import {
   SpeechBubbleShape,
 } from "@/components/landing/Shapes";
 import { wlBody, wlDisplay } from "@/lib/fonts";
+import { useHeaderFold } from "@/lib/useHeaderFold";
 
 /**
  * Landing page — Wollo design language.
@@ -79,35 +80,9 @@ function SiteHeader() {
   const [open, setOpen] = useState(false);
 
   // Fold the bar away on scroll down, bring it back on scroll up — phones
-  // only, where the bar costs a meaningful slice of viewport. matchMedia (not
-  // window.innerWidth in render, which hydrates differently on the server)
-  // decides which regime applies, and stays live across rotation/resizes.
-  // An open menu always pins the bar visible.
-  const [hidden, setHidden] = useState(false);
-  const [isPhone, setIsPhone] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    setIsPhone(mq.matches);
-    const onMq = (e: MediaQueryListEvent) => setIsPhone(e.matches);
-    mq.addEventListener("change", onMq);
-
-    let lastY = window.scrollY;
-    const onScroll = () => {
-      const y = window.scrollY;
-      // 8px dead-zone: sub-pixel jitter and rubber-banding at the top of a
-      // bounce shouldn't toggle the bar.
-      if (Math.abs(y - lastY) < 8) return;
-      setHidden(y > lastY && y > 64);
-      lastY = y;
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      mq.removeEventListener("change", onMq);
-      window.removeEventListener("scroll", onScroll);
-    };
-  }, []);
-
-  const folded = isPhone && hidden && !open;
+  // only, where the bar costs a meaningful slice of viewport. The breakpoint
+  // and scroll mechanics live in useHeaderFold; an open menu pins the bar.
+  const folded = useHeaderFold({ pinned: open });
 
   return (
     <header

@@ -1,21 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut } from "next-auth/react";
 
+import AdminDock from "@/components/AdminDock";
 import NeonButton from "@/components/NeonButton";
 import { SpeakUpWordmark, UnilorinLogo } from "@/components/Logo";
+import { useHeaderFold } from "@/lib/useHeaderFold";
 
 /**
  * The admin shell's navigation column.
  *
  * Defined once and rendered by AdminLayout, so every admin page inherits the
  * same chrome instead of re-deriving it. Fixed at every breakpoint: below `lg`
- * it is an off-canvas drawer driven by a hamburger in a slim top bar, and at
- * `lg` it simply stops translating — AdminLayout reserves the column with
- * padding rather than putting the aside in flow, so a long page never drags the
- * navigation up out of view.
+ * navigation lives in the floating AdminDock (this component renders the slim
+ * top bar plus the dock itself), and at `lg` it becomes a permanent rail —
+ * AdminLayout reserves the column with padding rather than putting the aside in
+ * flow, so a long page never drags the navigation up out of view.
  *
  * `bg-raised` (not .surface) is deliberate: the sidebar is the one opaque raised
  * plane in the UI, which is what lets the translucent panels beside it read as
@@ -56,26 +58,12 @@ function isActiveRoute(pathname: string, item: NavItem): boolean {
 
 export default function AdminSidebar() {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const close = useCallback(() => setOpen(false), []);
-
-  // A tap on a nav link navigates and must also dismiss the drawer; watching
-  // the resolved URL covers link taps and browser history alike.
-  useEffect(() => {
-    setOpen(false);
-  }, [router.asPath]);
-
-  // Escape closes the drawer, matching every other overlay convention.
-  useEffect(() => {
-    if (!open) return;
-    function handleKey(event: KeyboardEvent): void {
-      if (event.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [open]);
+  // Fold the mobile bar away on scroll down, back on scroll up. The breakpoint
+  // is lg (not the hook's md default) because the bar is lg:hidden — it only
+  // exists below 1024px.
+  const folded = useHeaderFold({ breakpoint: "(max-width: 1023px)" });
 
   const handleSignOut = useCallback(() => {
     setSigningOut(true);
@@ -85,44 +73,27 @@ export default function AdminSidebar() {
 
   return (
     <>
-      {/* Mobile bar — owns the hamburger and keeps the brand visible while the
-          drawer is closed. */}
-      <div className="fixed inset-x-0 top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-raised/95 px-4 backdrop-blur-md lg:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-label={open ? "Close navigation" : "Open navigation"}
-          aria-expanded={open}
-          aria-controls="admin-sidebar"
-          className="btn-icon h-9 w-9 rounded-xl"
-        >
-          <MenuGlyph open={open} />
-        </button>
+      {/* Mobile bar — keeps the brand visible while the dock owns navigation.
+          Folds away on scroll (see useHeaderFold) via the shared transform
+          classes; the bar is fixed, so the slide is paint-only and never
+          disturbs the layout beneath it. */}
+      <div
+        className={`fold-header fixed inset-x-0 top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-raised/95 px-4 backdrop-blur-md lg:hidden ${
+          folded ? "fold-header-hidden" : ""
+        }`}
+      >
         <SpeakUpWordmark compact />
         <span className="ml-auto text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted">
           Admin
         </span>
       </div>
 
-      {/* Scrim: closes the drawer and stops stray taps reaching the page. */}
-      {open && (
-        <div
-          onClick={close}
-          className="fixed inset-0 z-30 bg-canvas/80 backdrop-blur-sm lg:hidden"
-          aria-hidden="true"
-        />
-      )}
-
-      {/* `invisible` when closed is load-bearing, not decoration: a drawer left
-          at -100% still takes tab stops and is still read out. Transitioning
-          visibility alongside the transform holds it visible for the length of
-          the slide, so it hides only once it has left the screen. */}
+      {/* Desktop rail: below lg this simply is not rendered (hidden), so none of
+          the old drawer transition machinery exists anymore — the aside is a
+          plain, unconditional column at lg and up. */}
       <aside
-        id="admin-sidebar"
         aria-label="Admin navigation"
-        className={`fixed bottom-0 left-0 top-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-line bg-raised transition-[transform,visibility] duration-200 ease-out lg:visible lg:max-w-none lg:translate-x-0 ${
-          open ? "translate-x-0" : "invisible -translate-x-full"
-        }`}
+        className="fixed bottom-0 left-0 top-0 z-40 hidden w-72 flex-col border-r border-line bg-raised lg:flex"
       >
         <div className="flex items-center gap-3 border-b border-line px-5 py-5">
           <UnilorinLogo size={38} />
@@ -132,16 +103,6 @@ export default function AdminSidebar() {
               Students Affairs
             </span>
           </span>
-          {/* The hamburger sits under the scrim once the drawer is open, so the
-              drawer carries its own dismiss control. */}
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Close navigation"
-            className="btn-icon h-8 w-8 lg:hidden"
-          >
-            <MenuGlyph open />
-          </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-5">
@@ -199,6 +160,14 @@ export default function AdminSidebar() {
           </NeonButton>
         </div>
       </aside>
+
+      {/* Mobile navigation: the floating bottom dock (with its Menu sheet for
+          the full link list and sign-out). wl-scope supplies the --wl-* custom
+          properties the dock's CSS consumes; lg:hidden because the desktop rail
+          takes over at lg. */}
+      <div className="wl-scope lg:hidden">
+        <AdminDock />
+      </div>
     </>
   );
 }
@@ -206,22 +175,6 @@ export default function AdminSidebar() {
 /* ------------------------------------------------------------------------- */
 /* Icons — inline so the sidebar carries no icon-font or package dependency.  */
 /* ------------------------------------------------------------------------- */
-
-function MenuGlyph({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-[1.15rem] w-[1.15rem]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-    </svg>
-  );
-}
 
 function Icon({ children }: { children: ReactNode }) {
   return (

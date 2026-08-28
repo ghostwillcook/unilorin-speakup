@@ -63,13 +63,17 @@
     background-color: var(--color-canvas);
     color-scheme: light;
     scroll-behavior: smooth;
-    /* Mobile browsers flash a grey box over whatever is tapped. The app's
-       feedback is its own :active/hover states, so the system highlight is
-       noise; long-press selection still works — only the tap flash goes. */
-    -webkit-tap-highlight-color: transparent;
     /* Kills the double-tap-zoom delay on touch without disabling pinch zoom,
-       so taps feel instant. */
+       so taps feel instant. Stays on html because touch-action DOES inherit. */
     touch-action: manipulation;
+  }
+
+  /* -webkit-tap-highlight-color does NOT inherit, so declaring it on html only
+     de-flashed the html element itself — buttons, links and everything else
+     still showed the grey box. Targeting every element is the only way the
+     suppression actually reaches what users tap. */
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
@@ -1225,7 +1229,13 @@
    declared on .wl-page itself for the same reason: a variable on :root
    would be visible app-wide and invite reuse.
    =========================================================================== */
-.wl-page {
+/* Token carrier. .wl-page is the full landing treatment; .wl-scope carries
+   ONLY the custom properties, for surfaces elsewhere in the app (the
+   student and admin consoles' docks and greeting headers) that borrow
+   dock/avatar components without inheriting the landing page's fonts or
+   canvas. */
+.wl-page,
+.wl-scope {
   /* Palette. Violet is the primary; pink/purple/yellow are data accents that
      appear one at a time (a pill, a badge, a bar) and never as fills for
      large areas, per the spec's "accents, not paint" intent. */
@@ -1247,7 +1257,9 @@
      cards 24-32px. */
   --wl-r-card: 24px;
   --wl-r-card-lg: 32px;
+}
 
+.wl-page {
   background: var(--wl-canvas);
   color: var(--wl-ink);
   font-family: var(--wl-body), ui-sans-serif, system-ui, -apple-system,
@@ -1734,6 +1746,307 @@
   color: #ffffff;
 }
 
+/* ===========================================================================
+   Authentication + mobile navigation — the auth/mobile app specification
+   ---------------------------------------------------------------------------
+   Extends the Wollo layer with the surfaces that spec defines: the sign-in
+   card (480px, 32px radius, pill inputs with a violet focus glow) and the
+   floating bottom navigation dock (64px violet pill, sliding white highlight).
+   Same namespace rules as above: everything hangs off .wl-page tokens, so the
+   app consoles below md keep their own design untouched except where the dock
+   deliberately replaces their tab bar on phones.
+   =========================================================================== */
+.wl-page {
+  /* Secondary text from the spec's token table — slate, one step warmer than
+     the landing layer's ink-alpha, so subtitles and placeholders are a named
+     colour rather than four different alphas. */
+  --wl-slate: #6c727f;
+}
+
+/* --- Sign-in card ------------------------------------------------------------ */
+.wl-auth-card {
+  background: #ffffff;
+  border-radius: var(--wl-r-card-lg);
+  box-shadow: var(--wl-shadow);
+  border: 1px solid rgb(16 2 111 / 0.05);
+}
+
+.wl-auth-title {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.75rem;
+  color: var(--wl-ink);
+}
+.wl-auth-sub {
+  font-size: 0.875rem;
+  color: var(--wl-slate);
+}
+
+.wl-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--wl-ink);
+  margin-bottom: 0.45rem;
+}
+.wl-label-aux {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--wl-slate);
+}
+
+/* 52px pill inputs. Focus is painted as a 1px border plus an inset 1px ring,
+   which reads as the spec's 2px violet border but — unlike switching
+   border-width — never shifts the input's content by a pixel. */
+.wl-input {
+  display: block;
+  width: 100%;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid var(--wl-rule);
+  background: #ffffff;
+  color: var(--wl-ink);
+  padding: 0 1.25rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition:
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+.wl-input::placeholder {
+  color: var(--wl-slate);
+}
+.wl-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.wl-input:focus {
+  outline: none;
+  border-color: var(--wl-violet);
+  box-shadow:
+    inset 0 0 0 1px var(--wl-violet),
+    0 0 0 4px rgb(16 2 111 / 0.1);
+}
+
+/* Password eye: inside the pill's right edge, large enough for a finger. */
+.wl-input-eye {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--wl-slate);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.wl-input-eye:hover {
+  color: var(--wl-violet);
+}
+
+/* 56px full-width violet submit; the spec's hover is a 1.01 scale plus the
+   deeper violet, both pure transform/colour so the pill never reflows. */
+.wl-auth-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid var(--wl-violet);
+  background: var(--wl-violet);
+  color: #ffffff;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
+}
+.wl-auth-submit:hover:not(:disabled) {
+  background: #0a014f;
+  border-color: #0a014f;
+  transform: scale(1.01);
+  box-shadow: var(--wl-shadow-lift);
+}
+.wl-auth-submit:active:not(:disabled) {
+  transform: scale(1);
+}
+.wl-auth-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Error notice: the spec's pink as the error carrier, on a whisper of tint
+   rather than a fill. */
+.wl-auth-notice {
+  display: flex;
+  gap: 0.65rem;
+  border-radius: 1rem;
+  border: 1px solid rgb(220 29 73 / 0.22);
+  background: rgb(220 29 73 / 0.05);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  color: var(--wl-ink);
+}
+.wl-auth-notice svg {
+  color: var(--wl-pink);
+  flex: none;
+}
+
+/* Glass circular action button (40px) — the spec's secondary-header back
+   button, used at the auth page's top-left. */
+.wl-orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--wl-ink);
+  border: none;
+  box-shadow: 0 8px 16px rgb(0 0 0 / 0.06);
+  cursor: pointer;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease;
+}
+.wl-orb:hover {
+  transform: scale(1.06);
+  box-shadow: 0 12px 24px rgb(0 0 0 / 0.09);
+}
+
+/* --- Floating bottom navigation dock -------------------------------------------- */
+.wl-dock {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 26rem;
+  height: 64px;
+  border-radius: 999px;
+  background: var(--wl-violet);
+  box-shadow: 0 16px 36px rgb(16 2 111 / 0.18);
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  z-index: 30;
+  /* Scroll elevation: content passing under the dock deepens its shadow
+     (24px -> 36px of spread, approximated as the two states below). */
+  transition: box-shadow 0.35s ease;
+}
+.wl-dock-scrolled {
+  box-shadow: 0 20px 44px rgb(16 2 111 / 0.3);
+}
+
+/* The sliding highlight: a 44px white circle behind the active icon. Its
+   position is set inline per active index; the transition is the spec's
+   spring (stiffness 350 / damping 25) approximated with an overshooting
+   cubic-bezier, since there is no motion library on this page. */
+.wl-dock-highlight {
+  position: absolute;
+  top: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: #ffffff;
+  transform: translateX(-50%);
+  transition: left 0.45s cubic-bezier(0.34, 1.3, 0.52, 1);
+}
+
+.wl-dock-item {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--wl-grey);
+  opacity: 0.7;
+  font-size: 0.625rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease, opacity 0.2s ease;
+  padding-top: 2px;
+}
+.wl-dock-item[aria-current="page"] {
+  color: var(--wl-violet);
+  opacity: 1;
+}
+
+/* Account sheet above the dock's Menu slot. */
+@keyframes wl-sheet-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.wl-sheet {
+  position: fixed;
+  bottom: calc(16px + 64px + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 26rem;
+  border-radius: var(--wl-r-card);
+  background: #ffffff;
+  box-shadow: var(--wl-shadow-lift);
+  padding: 1.15rem 1.25rem;
+  z-index: 31;
+  animation: wl-sheet-up 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Mobile greeting header (primary home header) -------------------------------- */
+.wl-greet-name {
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.375rem;
+  color: var(--wl-ink);
+}
+.wl-greet-sub {
+  font-size: 0.8125rem;
+  color: var(--wl-slate);
+}
+.wl-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--wl-violet);
+  color: #ffffff;
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border: 2px solid #ffffff;
+  box-shadow: 0 8px 16px rgb(16 2 111 / 0.14);
+}
+
 /* --- Reduced motion ---------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .wl-float {
@@ -1758,4 +2071,24 @@
   .wl-btn-outline:hover {
     transform: none !important;
   }
+  .wl-dock-highlight,
+  .wl-sheet,
+  .wl-orb,
+  .wl-auth-submit,
+  .wl-input {
+    transition: none !important;
+    animation: none !important;
+  }
+  .wl-auth-submit:hover:not(:disabled),
+  .wl-orb:hover {
+    transform: none !important;
+  }
+}
+
+/* Shared fold-away for sticky/fixed bars (landing uses its own .wl-header
+   pair; these serve the app consoles). Transform-only, never layout. */
+.fold-header { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+.fold-header-hidden { transform: translateY(-100%); }
+@media (prefers-reduced-motion: reduce) {
+  .fold-header { transition: none !important; }
 }

@@ -35,11 +35,14 @@ export default function AdminLayout({
 
       <AdminSidebar />
 
-      {/* The sidebar is fixed at every breakpoint, so the space it occupies has
-          to be reserved here — pt-14 clears the mobile bar, lg:pl-72 clears the
-          desktop rail (both track the sidebar's own h-14 / w-72). */}
+      {/* The sidebar chrome is fixed at every breakpoint, so the space it
+          occupies has to be reserved here — pt-14 clears the mobile bar,
+          lg:pl-72 clears the desktop rail (both track the sidebar's own
+          h-14 / w-72), and pb-32 on main clears the floating dock (and its
+          sheet) at the bottom on mobile, where lg:pb-10 restores the desktop
+          rhythm. */}
       <div className="min-h-screen pt-14 lg:pl-72 lg:pt-0">
-        <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:px-10 lg:py-10">
+        <main className="mx-auto w-full max-w-6xl px-4 py-7 pb-32 sm:px-6 lg:px-10 lg:py-10 lg:pb-10">
           <header className="mb-7 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-line pb-5">
             <div className="min-w-0">
               <h1 className="display-sm text-[1.75rem] sm:text-[2.25rem]">
