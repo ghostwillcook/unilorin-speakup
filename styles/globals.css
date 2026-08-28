@@ -1929,68 +1929,49 @@
   box-shadow: 0 12px 24px rgb(0 0 0 / 0.09);
 }
 
-/* --- Floating bottom navigation dock -------------------------------------------- */
+/* --- Bottom navigation bar — flat monochrome spec ---------------------------------- */
+/* The floating violet pill dock was replaced by this spec: a flat bar flush
+   to the bottom edge, no radius, no border, no heavy shadow — it reads as
+   the canvas itself, so wayfinding stays quiet and content carries the
+   colour. Monochrome by design: the active destination is a solid black
+   fill with bold text, inactive ones are light grey outlines. There is no
+   sliding highlight to position, which is also what killed the old dock's
+   cropping bug: nothing in the bar overlaps anything else. */
 .wl-dock {
   position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 40px);
-  max-width: 26rem;
-  height: 64px;
-  border-radius: 999px;
-  background: var(--wl-violet);
-  box-shadow: 0 16px 36px rgb(16 2 111 / 0.18);
-  display: flex;
-  align-items: center;
-  padding: 0 0.5rem;
-  z-index: 30;
-  /* Scroll elevation: content passing under the dock deepens its shadow
-     (24px -> 36px of spread, approximated as the two states below). */
-  transition: box-shadow 0.35s ease;
-}
-.wl-dock-scrolled {
-  box-shadow: 0 20px 44px rgb(16 2 111 / 0.3);
-}
-
-/* The sliding highlight: a 44px white circle behind the active icon. Its
-   position is set inline per active index; the transition is the spec's
-   spring (stiffness 350 / damping 25) approximated with an overshooting
-   cubic-bezier, since there is no motion library on this page. */
-.wl-dock-highlight {
-  position: absolute;
-  top: 10px;
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   background: #ffffff;
-  transform: translateX(-50%);
-  transition: left 0.45s cubic-bezier(0.34, 1.3, 0.52, 1);
+  display: flex;
+  align-items: stretch;
+  z-index: 30;
 }
 
+/* Four equidistant zones; the icon sits centred above its small label. */
 .wl-dock-item {
-  position: relative;
-  z-index: 1;
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  height: 100%;
+  gap: 3px;
   border: none;
   background: transparent;
-  color: var(--wl-grey);
-  opacity: 0.7;
-  font-size: 0.625rem;
-  font-weight: 600;
+  color: #9ca3af;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1;
   cursor: pointer;
-  transition: color 0.2s ease, opacity 0.2s ease;
-  padding-top: 2px;
+  transition: color 0.18s ease;
+  padding: 0;
 }
 .wl-dock-item[aria-current="page"] {
-  color: var(--wl-violet);
-  opacity: 1;
+  color: var(--wl-ink);
+  font-weight: 700;
 }
 
 /* Account sheet above the dock's Menu slot. */
@@ -2006,7 +1987,7 @@
 }
 .wl-sheet {
   position: fixed;
-  bottom: calc(16px + 64px + 12px);
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 40px);
@@ -2071,7 +2052,6 @@
   .wl-btn-outline:hover {
     transform: none !important;
   }
-  .wl-dock-highlight,
   .wl-sheet,
   .wl-orb,
   .wl-auth-submit,

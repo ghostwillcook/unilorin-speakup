@@ -1,14 +1,23 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { SessionUser } from "@/lib/guards";
 
 /**
- * The floating bottom navigation dock — the mobile half of the auth/mobile
- * design spec.
+ * The mobile bottom navigation bar — the flat monochrome half of the
+ * auth/mobile design spec.
  *
- * A 64px violet pill suspended 16px above the screen edge, with a 44px white
- * circular highlight that slides behind the active icon on a spring curve
- * (the spec's stiffness 350 / damping 25, approximated by an overshooting
- * cubic-bezier in CSS — there is no motion library in this app).
+ * A white bar fixed flush to the bottom edge (no radius, no shadow), with
+ * each destination as an icon-above-label column. Wayfinding is carried
+ * entirely by weight and colour: the active destination is a solid black
+ * fill with a bold near-black label, inactive ones are light-grey outlines
+ * with regular labels. All of that is CSS — driven by `aria-current="page"`
+ * and `currentColor` inheritance — so the component only decides which
+ * icon variant to draw.
+ *
+ * This replaced the old sliding-highlight dock (a violet pill with a white
+ * circle that travelled behind the active icon): that absolutely-positioned
+ * circle clipped the icons and labels it passed under, and its percentage
+ * maths misbehaved at narrow widths. The flat design has no overlapping
+ * elements to misalign.
  *
  * The fourth slot is Menu rather than a destination: it opens the account
  * sheet (name, student ID, sign out), which is what a phone user loses when
@@ -32,22 +41,6 @@ export default function StudentDock({
   onSignOut: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  // Scroll elevation: once content passes underneath, the dock's shadow
-  // deepens (the spec's 24px -> 36px blur growth, as two states).
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // Slot count including Menu, for the highlight's percentage position.
-  const slots = tabs.length + 1;
-  const activeIndex = tabs.findIndex((t) => t.key === active);
-  // The highlight tracks the active tab; when Menu is open it slides to Menu.
-  const highlightIndex = menuOpen ? tabs.length : activeIndex;
 
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
   const initials = firstName.charAt(0).toUpperCase() + (user.name.trim().split(/\s+/).slice(-1)[0]?.charAt(0).toUpperCase() ?? "");
@@ -80,18 +73,7 @@ export default function StudentDock({
         </div>
       )}
 
-      <nav className={`wl-dock ${scrolled ? "wl-dock-scrolled" : ""}`} aria-label="Dashboard sections">
-        {/* The highlight is positioned by percentage of dock width so it never
-            needs measurement: each slot is an equal flex fraction, so slot i's
-            centre is (i + 0.5) / slots of the width. */}
-        {highlightIndex >= 0 && (
-          <span
-            className="wl-dock-highlight"
-            style={{ left: `${((highlightIndex + 0.5) / slots) * 100}%` }}
-            aria-hidden="true"
-          />
-        )}
-
+      <nav className="wl-dock" aria-label="Dashboard sections">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -103,7 +85,7 @@ export default function StudentDock({
               onChange(t.key);
             }}
           >
-            <DockIcon kind={t.icon} />
+            <DockIcon kind={t.icon} active={t.key === active && !menuOpen} />
             <span>{t.label}</span>
           </button>
         ))}
@@ -115,7 +97,7 @@ export default function StudentDock({
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
         >
-          <DockIcon kind="menu" />
+          <DockIcon kind="menu" active={menuOpen} />
           <span>Menu</span>
         </button>
       </nav>
@@ -123,9 +105,15 @@ export default function StudentDock({
   );
 }
 
-/* One icon set drawn at dock scale — 22px strokes at 1.7 weight, matching the
-   outline-icon weight the spec asks for on inactive tabs. */
-function DockIcon({ kind }: { kind: "chat" | "dm" | "complaint" | "menu" }) {
+/* One icon set drawn at dock scale — 22px. Two variants per icon, because the
+   flat spec marks the active destination by silhouette weight rather than
+   position: active = a solid filled shape (a heavy near-black silhouette,
+   drawn with fill="currentColor" and no stroke), inactive = the same shape
+   as a soft rounded outline (stroke="currentColor", 1.7 weight, round caps
+   and joins). Interiors are knocked out in white on the filled variants —
+   the bar's own colour — so details like the envelope flap stay legible
+   against the solid fill. */
+function DockIcon({ kind, active }: { kind: "chat" | "dm" | "complaint" | "menu"; active: boolean }) {
   const common = {
     width: 22,
     height: 22,
@@ -141,17 +129,46 @@ function DockIcon({ kind }: { kind: "chat" | "dm" | "complaint" | "menu" }) {
   };
 
   if (kind === "chat") {
+    // The bubble's tail curls left; three dots carry the "conversation" read.
+    const bubble =
+      "M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9l-4.2 3.4c-.5.4-1.3 0-1.3-.6V6.5Z";
     return (
       <svg {...common}>
-        <path
-          d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9l-4.2 3.4c-.5.4-1.3 0-1.3-.6V6.5Z"
-          {...stroke}
-        />
+        {active ? (
+          <>
+            <path d={bubble} fill="currentColor" />
+            {/* Dots knocked out of the solid bubble in the bar's white. */}
+            <circle cx="8.5" cy="10.25" r="1.05" fill="#ffffff" />
+            <circle cx="12" cy="10.25" r="1.05" fill="#ffffff" />
+            <circle cx="15.5" cy="10.25" r="1.05" fill="#ffffff" />
+          </>
+        ) : (
+          <>
+            <path d={bubble} {...stroke} />
+            <circle cx="8.5" cy="10.25" r="1.05" fill="currentColor" />
+            <circle cx="12" cy="10.25" r="1.05" fill="currentColor" />
+            <circle cx="15.5" cy="10.25" r="1.05" fill="currentColor" />
+          </>
+        )}
       </svg>
     );
   }
   if (kind === "dm") {
-    return (
+    return active ? (
+      <svg {...common}>
+        {/* Solid envelope; the flap is redrawn as a white stroke on top so
+            the shape still reads as an envelope and not a plain slab. */}
+        <rect x="3.5" y="5.5" width="17" height="11" rx="3" fill="currentColor" />
+        <path
+          d="m4.5 7 7.5 5 7.5-5"
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth={1.7}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ) : (
       <svg {...common}>
         <rect x="3.5" y="5.5" width="17" height="11" rx="3" {...stroke} />
         <path d="m4.5 7 7.5 5 7.5-5" {...stroke} />
@@ -159,20 +176,28 @@ function DockIcon({ kind }: { kind: "chat" | "dm" | "complaint" | "menu" }) {
     );
   }
   if (kind === "complaint") {
-    return (
+    return active ? (
       <svg {...common}>
-        <path
-          d="M12 4.5 21 19.5H3L12 4.5Z"
-          {...stroke}
-        />
+        {/* Solid triangle with the exclamation knocked out in white. */}
+        <path d="M12 4.5 21 19.5H3L12 4.5Z" fill="currentColor" />
+        <path d="M12 10v4" stroke="#ffffff" strokeWidth={1.7} strokeLinecap="round" fill="none" />
+        <circle cx="12" cy="16.8" r="0.9" fill="#ffffff" />
+      </svg>
+    ) : (
+      <svg {...common}>
+        <path d="M12 4.5 21 19.5H3L12 4.5Z" {...stroke} />
         <path d="M12 10v4" {...stroke} />
         <circle cx="12" cy="16.8" r="0.9" fill="currentColor" />
       </svg>
     );
   }
+  // Menu: three dots (an ellipsis) — outlined when inactive, solid when the
+  // sheet is open, so the slot reads as pressed while its card is up.
   return (
     <svg {...common}>
-      <path d="M4 7h16M4 12h16M4 17h10" {...stroke} />
+      <circle cx="5" cy="12" r="1.6" {...(active ? { fill: "currentColor" } : stroke)} />
+      <circle cx="12" cy="12" r="1.6" {...(active ? { fill: "currentColor" } : stroke)} />
+      <circle cx="19" cy="12" r="1.6" {...(active ? { fill: "currentColor" } : stroke)} />
     </svg>
   );
 }
