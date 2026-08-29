@@ -62,6 +62,7 @@ export default function ComplaintThread({
   title,
   subtitle,
   badge,
+  context,
   onBack,
   onDismiss,
 }: {
@@ -71,6 +72,12 @@ export default function ComplaintThread({
   title: string;
   subtitle?: string;
   badge?: React.ReactNode;
+  /**
+   * The complaint's own record, rendered as the first thing in the scroll
+   * area — the conversation opens referring to the message it is about,
+   * rather than the record living in a separate card outside the thread.
+   */
+  context?: React.ReactNode;
   onBack?: () => void;
   onDismiss?: () => void;
 }) {
@@ -329,6 +336,10 @@ export default function ComplaintThread({
         role="log"
         aria-label="Complaint conversation"
       >
+        {/* The record the conversation is about, first in the scroll: opening
+            the thread reads as opening THAT complaint's discussion. */}
+        {context}
+
         {loading ? (
           <p className="px-1 py-10 text-center text-sm text-muted">
             Loading the conversation…

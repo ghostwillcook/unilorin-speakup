@@ -15,7 +15,7 @@
  * same ones `npm run seed` writes. Never hardcoded: these are live passwords
  * and this file is tracked.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3313";

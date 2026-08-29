@@ -13,8 +13,11 @@
  *      below is the third, deliberately identical, copy.
  *
  * Every step is idempotent. Accounts are upserted on their unique email, and
- * the sample content (complaints, chat, DMs) is only written when its table is
- * empty — so `npm run seed` twice does not produce two of everything.
+ * the sample content (complaints, chat, DMs, live chat) is only written when
+ * its table is empty — so `npm run seed` twice does not produce two of
+ * everything. Live chat is the one nuance: the app itself creates
+ * conversations, so the conversation row is upserted on its student and only
+ * the messages inside it follow the "empty table" rule.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -394,6 +397,44 @@ const DM_THREAD: DmSeed[] = [
   },
 ];
 
+/**
+ * Live Chat is one persistent conversation per student, so this thread is
+ * Aisha's — the only student whose Live Chat the demo needs. It stays on the
+ * hostel water story already told by her complaint and the global room, so the
+ * three views read as one ongoing incident. Same shape as DM_THREAD for the
+ * same reason: a back-and-forth keyed by role, with the last student message
+ * left unread.
+ */
+const LIVE_CHAT: DmSeed[] = [
+  {
+    from: "STUDENT",
+    content: "Hello, is anyone attending to the water problem in Amina Hostel?",
+    minutesAgo: 3 * 60 + 30,
+    read: true,
+  },
+  {
+    from: "STUDENT",
+    content:
+      "I filed a complaint about Block C last week and the taps have been dry since Sunday.",
+    minutesAgo: 3 * 60 + 28,
+    read: true,
+  },
+  {
+    from: "ADMIN",
+    content:
+      "Good afternoon. Yes — your complaint is with the Works Unit. The Block C tank is being refilled today and a replacement pump is on order.",
+    minutesAgo: 3 * 60 + 5,
+    read: true,
+  },
+  {
+    from: "STUDENT",
+    content:
+      "Thank you. The water came on briefly this afternoon and went off again after a few minutes. Should I update the complaint?",
+    minutesAgo: 55,
+    read: false,
+  },
+];
+
 /* -------------------------------------------------------------------- seeding */
 
 const NOW = Date.now();
@@ -551,6 +592,66 @@ async function seedDirectMessages(users: Map<string, SeededUser>): Promise<numbe
 }
 
 /**
+ * Ensures Aisha has a Live Chat conversation and seeds its first exchange.
+ *
+ * The conversation itself is upserted with an empty update: E2E test runs
+ * create real conversations under random pseudonyms, and such a row is live
+ * app state (pseudonym, status, unread counters), not seed content. Only when
+ * no conversation exists is one created — as "Anonymous #42" so the demo
+ * matches both the landing page copy and Aisha's pseudonym in the global room
+ * history. The messages follow the usual rule instead: written only when the
+ * conversation holds none, which also covers the E2E case of a conversation
+ * that exists but is empty.
+ */
+async function seedLiveChat(users: Map<string, SeededUser>): Promise<number> {
+  const student = requireUser(users, AISHA.email);
+  const admin = requireUser(users, ADMIN_ACCOUNT.email);
+
+  const conversation = await prisma.liveConversation.upsert({
+    where: { userId: student.id },
+    update: {},
+    create: {
+      userId: student.id,
+      pseudonym: "Anonymous #42",
+      status: "OPEN",
+    },
+    select: { id: true },
+  });
+
+  const existing = await prisma.liveMessage.count({
+    where: { conversationId: conversation.id },
+  });
+  if (existing > 0) {
+    console.log(`  live messages skipped (${existing} already present)`);
+    return 0;
+  }
+
+  const { count } = await prisma.liveMessage.createMany({
+    data: LIVE_CHAT.map((m) => ({
+      conversationId: conversation.id,
+      senderId: m.from === "ADMIN" ? admin.id : student.id,
+      senderRole: m.from,
+      content: m.content,
+      // Read a minute after arrival, like the DM thread, so the unread count
+      // is the interesting number rather than the timestamps.
+      readAt: m.read ? minutesAgo(Math.max(m.minutesAgo - 1, 0)) : null,
+      createdAt: minutesAgo(m.minutesAgo),
+    })),
+  });
+
+  // The last seeded student message is unread; adminUnread is the counter the
+  // admin inbox renders its badge from, so it is set rather than incremented —
+  // the messages were just created, so the seed knows the true total is 1.
+  await prisma.liveConversation.update({
+    where: { id: conversation.id },
+    data: { adminUnread: 1 },
+  });
+
+  console.log(`  live messages created ${count}`);
+  return count;
+}
+
+/**
  * Ensures both Setting rows exist at their defaults.
  *
  * The update side is intentionally empty: an admin who has already tuned the
@@ -654,20 +755,23 @@ async function main(): Promise<void> {
   await seedComplaints(users);
   await seedChat(users);
   await seedDirectMessages(users);
+  await seedLiveChat(users);
   await seedSettings();
 
   printCredentials();
 
-  const [complaints, chat, dms, students] = await Promise.all([
+  const [complaints, chat, dms, live, students] = await Promise.all([
     prisma.complaint.count(),
     prisma.chatMessage.count(),
     prisma.directMessage.count(),
+    prisma.liveMessage.count(),
     prisma.user.count({ where: { role: "STUDENT" } }),
   ]);
 
   console.log(
     `  Database now holds ${students} student account(s), ${complaints} ` +
-      `complaint(s), ${chat} chat message(s) and ${dms} direct message(s).\n`,
+      `complaint(s), ${chat} chat message(s), ${dms} direct message(s) and ` +
+      `${live} live chat message(s).\n`,
   );
   console.log("  Sign in at http://localhost:3000/auth/signin\n");
 }

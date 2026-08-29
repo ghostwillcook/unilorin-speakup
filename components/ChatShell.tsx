@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 /**
@@ -10,6 +11,11 @@ import type { ReactNode } from "react";
  * its bottom by the navigation dock's height so nothing sits under the dock.
  * That is the messaging spec's mobile requirement (§45-47): the conversation
  * occupies the available screen — no tiny floating panels.
+ *
+ * While the mobile shell is up, the page behind it is scroll-locked and the
+ * shell's header is opaque — without both, the underlying content scrolls and
+ * shimmers through a translucent header, which reads as one conversation
+ * bleeding into another.
  */
 export default function ChatShell({
   title,
@@ -38,12 +44,32 @@ export default function ChatShell({
   footer?: ReactNode;
   className?: string;
 }) {
+  // Scroll-lock the page behind the mobile full-screen shell only. Desktop's
+  // shell is an in-page panel and the page around it must stay scrollable, so
+  // the lock is scoped to the sub-md breakpoint and re-checked on resize
+  // (rotation between the two layouts must not leave the body stuck).
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    if (!mq.matches) return;
+
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onMq = (e: MediaQueryListEvent) => {
+      document.body.style.overflow = e.matches ? "hidden" : previous;
+    };
+    mq.addEventListener("change", onMq);
+    return () => {
+      mq.removeEventListener("change", onMq);
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   return (
     <section
       aria-label={title}
       className={`surface flex flex-col overflow-hidden fixed inset-x-0 bottom-0 top-0 z-20 rounded-none border-0 pb-[calc(64px+env(safe-area-inset-bottom,0px))] md:relative md:inset-auto md:z-auto md:h-[34rem] md:max-h-[78vh] md:rounded-2xl md:border md:pb-0 ${className}`}
     >
-      <header className="flex items-center gap-2 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur-md md:bg-transparent md:px-5 md:py-4">
+      <header className="flex items-center gap-2 border-b border-line bg-canvas px-3 py-2.5 md:bg-transparent md:px-5 md:py-4">
         {onBack && (
           <button
             type="button"

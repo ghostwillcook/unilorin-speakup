@@ -14,6 +14,7 @@ import ComplaintThread from "@/components/ComplaintThread";
 import ComplaintForm from "@/components/ComplaintForm";
 import DMPanel from "@/components/DMPanel";
 import LiveChatPanel from "@/components/LiveChatPanel";
+import AnonymousRoomPanel from "@/components/AnonymousRoomPanel";
 import NeonButton from "@/components/NeonButton";
 
 interface StudentComplaint {
@@ -32,15 +33,21 @@ interface StudentComplaint {
 /**
  * The student console.
  *
- * Four sections — My Complaints (the default, per the spec: a signed-in
- * student lands on their complaints), Lodge Complaint, Direct Messages, and
- * Live Chat — reached through a desktop side rail that mirrors the admin
- * console's, and through the mobile bottom dock. Each complaint opens its own
- * dedicated two-way thread (ComplaintThread), entirely separate from DMs and
- * Live Chat.
+ * Five sections — My Complaints (the default, per the spec: a signed-in
+ * student lands on their complaints), Lodge Complaint, Direct Messages, Live
+ * Chat, and the Anonymous Room — reached through a desktop side rail that
+ * mirrors the admin console's, and through the mobile bottom dock. Each
+ * complaint opens its own dedicated two-way thread (ComplaintThread),
+ * entirely separate from DMs and Live Chat.
+ *
+ * Live Chat vs Anonymous Room: Live Chat is the student's private
+ * conversation with the Unit; the Anonymous Room is the public
+ * student-to-student square under a pseudonym. Same socket, different tables,
+ * different promises — kept as separate sections so neither leaks into the
+ * other's expectations.
  */
 
-type SectionKey = "complaints" | "lodge" | "dm" | "chat";
+type SectionKey = "complaints" | "lodge" | "dm" | "chat" | "room";
 
 const SECTIONS: Array<{
   key: SectionKey;
@@ -50,14 +57,15 @@ const SECTIONS: Array<{
   { key: "lodge", label: "Lodge Complaint" },
   { key: "dm", label: "Direct Messages" },
   { key: "chat", label: "Live Chat" },
+  { key: "room", label: "Anonymous Room" },
 ];
 
 /** Dock bar slots (first three; Menu is the fourth). The sheet carries all
- *  four sections, which is why Lodge Complaint is not on the bar itself. */
+ *  five sections, which is why Lodge Complaint is not on the bar itself. */
 const DOCK_TABS = [
   { key: "complaints", label: "Complaints", icon: "complaint" as const },
-  { key: "chat", label: "Chat", icon: "chat" as const },
-  { key: "dm", label: "Messages", icon: "dm" as const },
+  { key: "chat", label: "Live Chat", icon: "chat" as const },
+  { key: "room", label: "Room", icon: "dm" as const },
 ];
 
 export default function StudentDashboard({ user }: { user: SessionUser }) {
@@ -231,6 +239,7 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
 
               {section === "dm" && <DMPanel />}
               {section === "chat" && <LiveChatPanel />}
+              {section === "room" && <AnonymousRoomPanel />}
             </SlideSwitch>
           </main>
         </div>
@@ -421,9 +430,9 @@ function MyComplaints({
 /* ------------------------------------------------------------------------- */
 
 /**
- * The complaint itself is the context header; the thread below it is the
- * conversation about it. On phones the thread's ChatShell goes full-screen
- * with a back button of its own, so this pair reads as one flow.
+ * The complaint's record is the opening entry of its own thread — opening the
+ * conversation visibly refers to the message it is about, on every screen
+ * size, instead of a separate card floating outside the conversation.
  */
 function ComplaintDetail({
   complaint,
@@ -433,29 +442,20 @@ function ComplaintDetail({
   onBack: () => void;
 }) {
   return (
-    <div className="space-y-5">
-      {/* The record: what was submitted, attachments, status. Kept as its own
-          card so the thread is clearly the conversation ABOUT it. */}
-      <section className="surface overflow-hidden">
-        <div className="border-b border-line px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-graphite">
-                {complaint.title}
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">
-                Lodged {dateTimeLabel(complaint.createdAt)}
-              </p>
-            </div>
-            <StatusBadge status={complaint.status} />
-          </div>
-        </div>
-
-        <div className="px-5 py-4">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-graphite/85">
+    <ComplaintThread
+      complaintId={complaint.id}
+      viewerRole="STUDENT"
+      title={complaint.title}
+      subtitle={`Lodged ${dateTimeLabel(complaint.createdAt)} · conversation with the Unit`}
+      badge={<StatusBadge status={complaint.status} />}
+      context={
+        <div className="mb-5 rounded-xl border border-line bg-veil px-4 py-3.5">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-widest text-accent/70">
+            Original complaint
+          </p>
+          <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-graphite/85">
             {complaint.description}
           </p>
-
           {complaint.files.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
               {complaint.files.map((f, i) => (
@@ -467,7 +467,7 @@ function ComplaintDetail({
                     href={`/api/attachments/${f}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="badge border border-line bg-veil text-accent"
+                    className="badge border border-line bg-canvas text-accent"
                   >
                     Attachment {i + 1}
                   </a>
@@ -476,16 +476,9 @@ function ComplaintDetail({
             </ul>
           )}
         </div>
-      </section>
-
-      <ComplaintThread
-        complaintId={complaint.id}
-        viewerRole="STUDENT"
-        title="Conversation"
-        subtitle="You and the Unit, about this complaint"
-        onBack={onBack}
-      />
-    </div>
+      }
+      onBack={onBack}
+    />
   );
 }
 
@@ -540,6 +533,17 @@ function SectionIcon({ kind }: { kind: SectionKey }) {
       <svg {...common}>
         <rect x="3.5" y="5.5" width="17" height="11" rx="3" />
         <path d="m4.5 7 7.5 5 7.5-5" />
+      </svg>
+    );
+  }
+  if (kind === "room") {
+    // A crowd: the anonymous room is students among students.
+    return (
+      <svg {...common}>
+        <circle cx="9" cy="8" r="3.2" />
+        <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" />
+        <path d="M15.5 5.6a3 3 0 0 1 0 5.8" />
+        <path d="M17.4 14.3a5.5 5.5 0 0 1 3.1 4.7" />
       </svg>
     );
   }
