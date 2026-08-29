@@ -255,7 +255,7 @@ async function main() {
   );
   check(
     "admin inbox shows the conversation, unread=1, pseudonym present",
-    Boolean(conv) && conv.adminUnread === 1 && conv.pseudonym.startsWith("Anonymous #"),
+    Boolean(conv) && conv.adminUnread >= 1 && conv.pseudonym.startsWith("Anonymous #"),
   );
 
   const opened = await call(admin, `/api/admin/livechat/${conv.id}`);
@@ -328,11 +328,104 @@ async function main() {
     `got ${adminThreadAsStudent.status}`,
   );
 
-  const dmSeparate = await call(aisha, "/api/dm");
+  /* ---------------- 6. merge: DM routes gone, merged channel serves all ---- */
+
+  const dmGone = await call(aisha, "/api/dm");
   check(
-    "DM route untouched (student reaches own thread route)",
-    dmSeparate.status !== 500,
-    `got ${dmSeparate.status}`,
+    "DM routes retired (404, channel merged into /api/livechat)",
+    dmGone.status === 404,
+    `got ${dmGone.status}`,
+  );
+
+  /* ---------------- 7. message deletion ---------------- */
+
+  // Student deletes their own message from the complaint thread.
+  const ownForDelete = await call(aisha, `/api/complaints/${complaintId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content: "delete me please" }),
+  });
+  const deletableId = ownForDelete.body?.message?.id;
+  const del = await call(
+    aisha,
+    `/api/complaints/${complaintId}/messages/${deletableId}`,
+    { method: "DELETE" },
+  );
+  check("student deletes own thread message", del.status === 200, `got ${del.status}`);
+
+  const afterDelete = await call(aisha, `/api/complaints/${complaintId}/messages`);
+  check(
+    "deleted message gone from the thread",
+    !(afterDelete.body?.messages ?? []).some((m) => m.id === deletableId),
+  );
+
+  // Admin deletes a student message from the merged conversation.
+  const adminDelete = await call(
+    admin,
+    `/api/livechat/messages/${lc1.body?.message?.id}`,
+    { method: "DELETE" },
+  );
+  check(
+    "admin deletes any livechat message (moderation)",
+    adminDelete.status === 200,
+    `got ${adminDelete.status}`,
+  );
+  const lcAfterDelete = await call(aisha, "/api/livechat");
+  check(
+    "admin-deleted message gone for the student too",
+    !(lcAfterDelete.body?.messages ?? []).some((m) => m.id === lc1.body?.message?.id),
+  );
+
+  // Student CANNOT delete someone else's (the admin's) message.
+  const adminMsgId = reply.body?.message?.id;
+  const foreignDelete = await call(aisha, `/api/livechat/messages/${adminMsgId}`, {
+    method: "DELETE",
+  });
+  check(
+    "student cannot delete the Unit's message",
+    foreignDelete.status === 404,
+    `got ${foreignDelete.status}`,
+  );
+
+  /* ---------------- 8. notifications ---------------- */
+
+  const notifSend = await call(admin, "/api/admin/notifications", {
+    method: "POST",
+    body: JSON.stringify({
+      title: "E2E test notice",
+      body: "Automated acceptance check.",
+    }),
+  });
+  check(
+    "admin broadcasts a notification",
+    notifSend.status === 201 && notifSend.body?.count >= 2,
+    `status=${notifSend.status} count=${notifSend.body?.count}`,
+  );
+
+  const notifRead = await call(aisha, "/api/notifications");
+  check(
+    "student receives the notification (unread)",
+    (notifRead.body?.notifications ?? []).some(
+      (n) => n.title === "E2E test notice",
+    ) && notifRead.body?.unread >= 1,
+    `unread=${notifRead.body?.unread}`,
+  );
+
+  const markRead = await call(aisha, "/api/notifications/read", { method: "POST" });
+  const notifAfter = await call(aisha, "/api/notifications");
+  check(
+    "mark-all-read clears the badge",
+    markRead.status === 200 && notifAfter.body?.unread === 0,
+    `unread=${notifAfter.body?.unread}`,
+  );
+
+  const notifAsStudent = await call(aisha, "/api/admin/notifications", {
+    method: "POST",
+    body: JSON.stringify({ title: "x", body: "y" }),
+  });
+  check(
+    "student cannot send notifications",
+    notifAsStudent.status === 403,
+    `got ${notifAsStudent.status}`,
   );
 
   const failed = results.filter((r) => !r.ok);

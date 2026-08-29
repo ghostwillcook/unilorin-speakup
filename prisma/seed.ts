@@ -13,7 +13,7 @@
  *      below is the third, deliberately identical, copy.
  *
  * Every step is idempotent. Accounts are upserted on their unique email, and
- * the sample content (complaints, chat, DMs, live chat) is only written when
+ * the sample content (complaints, chat, live chat) is only written when
  * its table is empty — so `npm run seed` twice does not produce two of
  * everything. Live chat is the one nuance: the app itself creates
  * conversations, so the conversation row is upserted on its student and only
@@ -350,7 +350,7 @@ const CHAT: ChatSeed[] = [
   },
 ];
 
-interface DmSeed {
+interface ExchangeSeed {
   from: Role;
   content: string;
   minutesAgo: number;
@@ -359,53 +359,15 @@ interface DmSeed {
   read: boolean;
 }
 
-/** One thread, keyed by the student — threads are addressed to Student Affairs
- *  collectively, so any admin may answer. */
-const DM_THREAD: DmSeed[] = [
-  {
-    from: "STUDENT",
-    content:
-      "Good afternoon. I reported the loose ceiling fan in Block C, Room 214 last week. Is there any update?",
-    minutesAgo: 5 * 60,
-    read: true,
-  },
-  {
-    from: "ADMIN",
-    content:
-      "Good afternoon Aisha. The Works Unit has been notified and a technician is scheduled for Thursday morning.",
-    minutesAgo: 4 * 60 + 40,
-    read: true,
-  },
-  {
-    from: "STUDENT",
-    content: "Thank you. Will someone need to be in the room when they come?",
-    minutesAgo: 4 * 60 + 12,
-    read: true,
-  },
-  {
-    from: "ADMIN",
-    content: "Yes please, or leave the key with your hostel porter and we will collect it.",
-    minutesAgo: 3 * 60 + 55,
-    read: true,
-  },
-  {
-    from: "STUDENT",
-    content:
-      "Noted. One more thing: the socket beside the window sparks when I plug in my laptop charger.",
-    minutesAgo: 26,
-    read: false,
-  },
-];
-
 /**
  * Live Chat is one persistent conversation per student, so this thread is
  * Aisha's — the only student whose Live Chat the demo needs. It stays on the
- * hostel water story already told by her complaint and the global room, so the
- * three views read as one ongoing incident. Same shape as DM_THREAD for the
- * same reason: a back-and-forth keyed by role, with the last student message
- * left unread.
+ * hostel water story already told by her complaint and the global room, then
+ * carries the old DM thread's follow-up (the Room 214 fan and the sparking
+ * socket), so the three views read as one ongoing incident. A back-and-forth
+ * keyed by role, with the last student message left unread.
  */
-const LIVE_CHAT: DmSeed[] = [
+const LIVE_CHAT: ExchangeSeed[] = [
   {
     from: "STUDENT",
     content: "Hello, is anyone attending to the water problem in Amina Hostel?",
@@ -431,6 +393,33 @@ const LIVE_CHAT: DmSeed[] = [
     content:
       "Thank you. The water came on briefly this afternoon and went off again after a few minutes. Should I update the complaint?",
     minutesAgo: 55,
+    read: true,
+  },
+  {
+    from: "ADMIN",
+    content:
+      "No need — the pump order already covers it. Please mention any other faults in this conversation and we will add them to the same Works Unit visit.",
+    minutesAgo: 45,
+    read: true,
+  },
+  {
+    from: "STUDENT",
+    content:
+      "In that case: the ceiling fan in Room 214 is still loose, and the socket by the window sparks when I plug in my laptop charger.",
+    minutesAgo: 38,
+    read: true,
+  },
+  {
+    from: "ADMIN",
+    content:
+      "Noted. The Works Unit technician is coming Thursday morning for the fan and will inspect the socket in the same visit. Please leave your key with your hostel porter and we will collect it.",
+    minutesAgo: 20,
+    read: true,
+  },
+  {
+    from: "STUDENT",
+    content: "Understood, I will drop the key with the porter on Wednesday evening. Thank you.",
+    minutesAgo: 9,
     read: false,
   },
 ];
@@ -563,34 +552,6 @@ async function seedChat(users: Map<string, SeededUser>): Promise<number> {
   return count;
 }
 
-async function seedDirectMessages(users: Map<string, SeededUser>): Promise<number> {
-  const existing = await prisma.directMessage.count();
-  if (existing > 0) {
-    console.log(`  direct msgs   skipped (${existing} already present)`);
-    return 0;
-  }
-
-  const student = requireUser(users, AISHA.email);
-  const admin = requireUser(users, ADMIN_ACCOUNT.email);
-
-  const { count } = await prisma.directMessage.createMany({
-    data: DM_THREAD.map((m) => ({
-      // The thread is keyed by the student on both sides of the conversation.
-      studentId: student.id,
-      senderId: m.from === "ADMIN" ? admin.id : student.id,
-      senderRole: m.from,
-      content: m.content,
-      // Read a minute after arrival, which is enough for the inbox's unread
-      // count to be the interesting number rather than the timestamps.
-      readAt: m.read ? minutesAgo(Math.max(m.minutesAgo - 1, 0)) : null,
-      createdAt: minutesAgo(m.minutesAgo),
-    })),
-  });
-
-  console.log(`  direct msgs   created ${count}`);
-  return count;
-}
-
 /**
  * Ensures Aisha has a Live Chat conversation and seeds its first exchange.
  *
@@ -632,8 +593,8 @@ async function seedLiveChat(users: Map<string, SeededUser>): Promise<number> {
       senderId: m.from === "ADMIN" ? admin.id : student.id,
       senderRole: m.from,
       content: m.content,
-      // Read a minute after arrival, like the DM thread, so the unread count
-      // is the interesting number rather than the timestamps.
+      // Read a minute after arrival, so the unread count is the interesting
+      // number rather than the timestamps.
       readAt: m.read ? minutesAgo(Math.max(m.minutesAgo - 1, 0)) : null,
       createdAt: minutesAgo(m.minutesAgo),
     })),
@@ -754,23 +715,21 @@ async function main(): Promise<void> {
   console.log("");
   await seedComplaints(users);
   await seedChat(users);
-  await seedDirectMessages(users);
   await seedLiveChat(users);
   await seedSettings();
 
   printCredentials();
 
-  const [complaints, chat, dms, live, students] = await Promise.all([
+  const [complaints, chat, live, students] = await Promise.all([
     prisma.complaint.count(),
     prisma.chatMessage.count(),
-    prisma.directMessage.count(),
     prisma.liveMessage.count(),
     prisma.user.count({ where: { role: "STUDENT" } }),
   ]);
 
   console.log(
     `  Database now holds ${students} student account(s), ${complaints} ` +
-      `complaint(s), ${chat} chat message(s), ${dms} direct message(s) and ` +
+      `complaint(s), ${chat} chat message(s) and ` +
       `${live} live chat message(s).\n`,
   );
   console.log("  Sign in at http://localhost:3000/auth/signin\n");

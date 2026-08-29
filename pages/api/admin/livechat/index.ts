@@ -90,7 +90,16 @@ export default async function handler(
 
     const id = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
     const rows = await prisma.liveConversation.findMany({
-      where: id ? { id } : undefined,
+      // The inbox lists conversations, not students: a conversation row exists
+      // for every student who has ever opened the Messages panel (the app
+      // creates one on first touch), so without this filter the admin sees a
+      // list of message-less rows and the lookup's "not started" note becomes
+      // unreachable. Only conversations with at least one message belong in
+      // the triage list; a student's first message brings theirs in (the
+      // socket's livechat:inbox event refreshes connected admins).
+      where: id
+        ? { id }
+        : { messages: { some: { deletedAt: null } } },
       orderBy: { updatedAt: "desc" },
       select: CONVERSATION_FIELDS,
     });

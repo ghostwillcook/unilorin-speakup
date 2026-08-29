@@ -1,12 +1,16 @@
 // UNILORIN SpeakUp — data model.
 //
 // User, Complaint, ChatMessage, Role and Status are the spec's models, ported
-// as written. DirectMessage and Setting are additions required by two resolved
-// decisions: student<->admin DMs, and admin settings that actually take effect.
-// ComplaintMessage and LiveConversation/LiveMessage carry the messaging
-// overhaul: per-complaint two-way threads, and Live Chat as per-student
-// conversations with the Unit. ChatMessage (the old global anonymous room)
-// remains as the Chat Logs historical record.
+// as written. Setting is the admin-settings addition. ComplaintMessage carries
+// per-complaint two-way threads; LiveConversation/LiveMessage is the single
+// private student↔Unit channel ("Messages") — DirectMessage was folded into it
+// by migration 20260829_merge_dm_livechat, when DMs and Live Chat turned out
+// to be the same product twice. ChatMessage (the old global anonymous room)
+// remains as the Chat Logs historical record. Notification and
+// PushSubscription power the admin→student notification channel.
+
+// (User relations note: the old dmThread/sentDms relations are gone with
+// DirectMessage.)
 
 generator client {
   provider = "prisma-client-js"
@@ -27,26 +31,24 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(cuid())
-  email        String          @unique
-  name         String
-  studentId    String          @unique
-  passwordHash String
-  role         Role            @default(STUDENT)
-  isActive     Boolean         @default(true)
-  complaints   Complaint[]
-  chatMessages ChatMessage[]
-  // Messages in THIS user's DM thread (student side of the conversation).
-  dmThread     DirectMessage[] @relation("StudentThread")
-  // Messages this user authored, whether student or replying admin.
-  sentDms      DirectMessage[] @relation("SentDMs")
+  id                String            @id @default(cuid())
+  email             String            @unique
+  name              String
+  studentId         String            @unique
+  passwordHash      String
+  role              Role              @default(STUDENT)
+  isActive          Boolean           @default(true)
+  complaints        Complaint[]
+  chatMessages      ChatMessage[]
   // Messages this user sent inside complaint threads.
   complaintMessages ComplaintMessage[] @relation("ComplaintMessages")
-  // This user's Live Chat support conversation with the Unit.
+  // This user's private conversation with the Unit (the merged channel).
   liveConversation  LiveConversation?
-  liveMessages      LiveMessage[]    @relation("LiveMessages")
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  liveMessages      LiveMessage[]      @relation("LiveMessages")
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@index([role])
 }
@@ -87,6 +89,8 @@ model ComplaintMessage {
   senderRole  Role
   content     String
   readAt      DateTime?
+  /** Soft delete — see LiveMessage.deletedAt. */
+  deletedAt   DateTime?
   createdAt   DateTime  @default(now())
 
   @@index([complaintId, createdAt])
@@ -107,30 +111,12 @@ model ChatMessage {
   @@index([userId])
 }
 
-model DirectMessage {
-  id         String    @id @default(cuid())
-  // Thread owner. A thread is keyed by the student rather than by a
-  // conversation row: students always address Student Affairs collectively and
-  // any admin may answer.
-  studentId  String
-  student    User      @relation("StudentThread", fields: [studentId], references: [id], onDelete: Cascade)
-  senderId   String
-  sender     User      @relation("SentDMs", fields: [senderId], references: [id], onDelete: Cascade)
-  senderRole Role
-  content    String
-  readAt     DateTime?
-  createdAt  DateTime  @default(now())
-
-  @@index([studentId, createdAt])
-  @@index([senderRole, readAt])
-}
-
 /**
  * Live Chat as the student's own support conversation with the Unit — one per
- * student (userId @unique), replacing the single global anonymous room, which
- * lives on only as Chat Logs history. The conversation is the stable identity
- * the inbox hangs off: status, unread counts, and a pseudonym so the admin
- * side can show "Anonymous #42" without exposing the student's name.
+ * student (userId @unique), the merged private channel ("Messages") after
+ * DirectMessage folded in. The conversation is the stable identity the inbox
+ * hangs off: status, unread counts, and a pseudonym so the admin side can
+ * show "Anonymous #42" without exposing the student's name.
  */
 model LiveConversation {
   id          String       @id @default(cuid())
@@ -158,9 +144,39 @@ model LiveMessage {
   senderRole     Role
   content        String
   readAt         DateTime?
+  /** Soft delete: set when the sender (or an admin) removes the message. The
+   *  row stays for the audit trail; reads exclude it. */
+  deletedAt      DateTime?
   createdAt      DateTime         @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+/** One in-app + Web Push notification per recipient. Broadcasts fan out to a
+ *  row per student, so read state and delivery are per-user with no join
+ *  tables; at demo scale that is the honest shape. */
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/** A browser Web Push subscription (Web Push API), one row per device. A user
+ *  may hold several; endpoints are globally unique per browser. */
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
 }
 
 model Setting {

@@ -9,18 +9,30 @@ import { timeLabel } from "@/lib/pseudonym";
 import { statusLabel, useSocket } from "@/lib/socket-client";
 
 /**
- * Live Chat — the student's own real-time conversation with the Students
+ * Messages — the student's own real-time conversation with the Students
  * Affairs Unit (one conversation per student, persisted in LiveMessage).
+ *
+ * This is the single merged channel that used to be split across Direct
+ * Messages and Live Chat: the old DM history was folded into the
+ * LiveConversation/LiveMessage model, and /api/livechat is the one route that
+ * serves it. The distinction the two old panels drew (a "saved" thread vs a
+ * "live" room) was invisible to students anyway — a message is a message.
  *
  * The REST route is the spine: history loads from /api/livechat on every mount,
  * and sends fall back to it whenever the socket is not connected — which, on a
  * cold free-tier socket server, is routine rather than exceptional. The socket
  * only ever ADDS liveness (instant echo, instant replies); it is never load-
- * bearing. That inversion of the old global-room design is what makes a
- * refresh-safe Live Chat: the database is the source of truth.
+ * bearing. The database is the source of truth.
+ *
+ * Students may also delete their OWN messages (senderRole === "STUDENT"): a tap
+ * on an own bubble reveals a confirm row, then the delete goes out over the
+ * socket (livechat:delete) with DELETE /api/livechat/messages/[id] as the REST
+ * fallback — the same dual-path shape as sending. The bubble leaves the list
+ * optimistically, and livechat:deleted drops it everywhere else too, whoever
+ * deleted it (a student's own retract or an admin's moderation).
  *
  * All user-facing status copy is production copy — no npm commands, no
- * terminal instructions (the old room's messages are gone by design).
+ * terminal instructions.
  */
 
 const MAX_CONTENT = 4000;
@@ -53,6 +65,14 @@ function asLiveMessage(value: unknown): LiveChatMessage | null {
   return { id, conversationId, senderRole, content, createdAt };
 }
 
+/** livechat:deleted payloads carry { id } (see server/socket.mjs). */
+function readDeletedId(value: unknown): string | null {
+  if (isRecord(value) && typeof value.id === "string" && value.id) {
+    return value.id;
+  }
+  return null;
+}
+
 function byTime(a: LiveChatMessage, b: LiveChatMessage): number {
   if (a.createdAt === b.createdAt) return a.id.localeCompare(b.id);
   return a.createdAt < b.createdAt ? -1 : 1;
@@ -73,7 +93,7 @@ function readErrorMessage(value: unknown): string {
   return "Message could not be delivered. Please try again.";
 }
 
-export default function LiveChatPanel() {
+export default function MessagesPanel() {
   const { data: session, status: authStatus } = useSession();
   const { socket, status } = useSocket(true);
 
@@ -85,9 +105,22 @@ export default function LiveChatPanel() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // The message whose confirm row is open. Null = no row visible; a tap on an
+  // own bubble toggles its own row closed again.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   const listRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const nearBottom = useRef(true);
+  /**
+   * The message text most recently handed to the socket, kept so a chat:error
+   * can put it back in the composer if the server rejects it — the live send
+   * path clears the composer on emit, so without this stash a rejection would
+   * cost the student the text as well as the message. Restored only into an
+   * empty composer (never over a retyped draft), and spent when the
+   * livechat:new echo of that message confirms it was persisted.
+   */
+  const pendingDraftRef = useRef<string | null>(null);
 
   const userId = session?.user?.id ?? null;
   const online = status === "online";
@@ -97,6 +130,16 @@ export default function LiveChatPanel() {
       if (prev.some((row) => row.id === incoming.id)) return prev;
       return [...prev, incoming].sort(byTime);
     });
+  }, []);
+
+  /**
+   * Single removal point for deletes, so the optimistic local remove and the
+   * livechat:deleted echo (which fires for OUR deletes too) collapse into one
+   * state transition instead of fighting over the same row.
+   */
+  const removeMessage = useCallback((id: string) => {
+    setMessages((prev) => prev.filter((row) => row.id !== id));
+    setPendingDeleteId((current) => (current === id ? null : current));
   }, []);
 
   /* --------------------------------------------------------------- history */
@@ -119,7 +162,7 @@ export default function LiveChatPanel() {
         if (!active) return;
 
         if (!res.ok) {
-          setError("Live chat is temporarily unavailable. Please try again.");
+          setError("Messages are temporarily unavailable. Please try again.");
           return;
         }
         if (!isRecord(body)) return;
@@ -133,7 +176,16 @@ export default function LiveChatPanel() {
           if (message) parsed.push(message);
         }
         parsed.sort(byTime);
-        setMessages(parsed);
+        // Merge rather than replace: the response is the full thread, but a
+        // livechat:new may have arrived while the request was in flight, and a
+        // wholesale setMessages would wipe that row when the response lands.
+        // Any local row missing from the response is genuinely newer (or the
+        // same row), so a union keyed by id is always safe.
+        setMessages((prev) => {
+          const byId = new Map(prev.map((row) => [row.id, row]));
+          for (const row of parsed) byId.set(row.id, row);
+          return [...byId.values()].sort(byTime);
+        });
         setError(null);
       } catch {
         if (active) {
@@ -156,19 +208,39 @@ export default function LiveChatPanel() {
 
     function handleNew(payload: unknown): void {
       const message = asLiveMessage(payload);
-      if (message) mergeMessage(message);
+      if (!message) return;
+      mergeMessage(message);
+      // The echo of this student's own send is the proof it was persisted,
+      // so the text stashed for chat:error recovery is spent.
+      if (message.senderRole === "STUDENT") {
+        pendingDraftRef.current = null;
+      }
     }
     function handleConversation(payload: unknown): void {
       if (isRecord(payload) && typeof payload.pseudonym === "string") {
         setPseudonym(payload.pseudonym);
       }
     }
+    // Whoever deleted it — this student retracting their own bubble on another
+    // device, or an admin moderating — the row is gone, so it goes everywhere.
+    function handleDeleted(payload: unknown): void {
+      const id = readDeletedId(payload);
+      if (id) removeMessage(id);
+    }
 
     // A socket send clears the composer optimistically; if the server rejects
     // it (empty, over-length, rate-limited) this is the ONLY channel through
     // which the failure surfaces — without it the message would just vanish.
+    // Hand the stashed draft back too, but only into an empty composer: a
+    // draft already being retyped must never be overwritten by the one that
+    // failed.
     function handleChatError(payload: unknown): void {
       setError(readErrorMessage(payload));
+      const lostDraft = pendingDraftRef.current;
+      pendingDraftRef.current = null;
+      if (lostDraft) {
+        setDraft((current) => (current.trim() ? current : lostDraft));
+      }
     }
 
     // The server re-runs its connection handler on every reconnect, and room
@@ -183,6 +255,7 @@ export default function LiveChatPanel() {
 
     socket.on("livechat:new", handleNew);
     socket.on("livechat:conversation", handleConversation);
+    socket.on("livechat:deleted", handleDeleted);
     socket.on("chat:error", handleChatError);
     socket.on("connect", handleReconnect);
 
@@ -194,10 +267,11 @@ export default function LiveChatPanel() {
     return () => {
       socket.off("livechat:new", handleNew);
       socket.off("livechat:conversation", handleConversation);
+      socket.off("livechat:deleted", handleDeleted);
       socket.off("chat:error", handleChatError);
       socket.off("connect", handleReconnect);
     };
-  }, [mergeMessage, socket, userId]);
+  }, [mergeMessage, removeMessage, socket, userId]);
 
   /* ---------------------------------------------------------------- scroll */
 
@@ -246,6 +320,11 @@ export default function LiveChatPanel() {
     // Live path: the server writes the row and echoes livechat:new back.
     if (socket && online) {
       socket.emit("livechat:send", { content });
+      // Stash what was handed over: the emit has no return value, so a
+      // chat:error is the only signal the message was rejected — and only
+      // this ref still holds the text to put back. Spent when the
+      // livechat:new echo confirms the row was written.
+      pendingDraftRef.current = content;
       clearComposer();
       return;
     }
@@ -293,14 +372,49 @@ export default function LiveChatPanel() {
     [send],
   );
 
+  /* --------------------------------------------------------------- deletes */
+
+  const deleteMessage = useCallback(
+    async (id: string) => {
+      // Optimistic: the bubble is gone the moment the student confirms, before
+      // any round-trip. If the delete ultimately fails, the error banner's
+      // Retry (or any reload) rehydrates from the database, which still has
+      // the row — the restore path is the ordinary history load.
+      removeMessage(id);
+      setError(null);
+
+      // Live path: the server soft-deletes and broadcasts livechat:deleted to
+      // the room (which this client also receives — harmlessly, the row is
+      // already gone from state).
+      if (socket && online) {
+        socket.emit("livechat:delete", { messageId: id });
+        return;
+      }
+
+      // REST fallback: same soft delete, no broadcast.
+      try {
+        const res = await fetch(
+          `/api/livechat/messages/${encodeURIComponent(id)}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) {
+          setError("Message could not be deleted. Please try again.");
+        }
+      } catch {
+        setError("Could not reach the server. Your message was not deleted.");
+      }
+    },
+    [online, removeMessage, socket],
+  );
+
   /* ---------------------------------------------------------------- render */
 
   const canSend = Boolean(userId) && !sending && draft.trim().length > 0;
 
   return (
     <ChatShell
-      title="Live Chat"
-      subtitle="A private conversation with the Student Affairs Unit."
+      title="Messages"
+      subtitle="Your private conversation with the Student Affairs Unit."
       badge={
         <span className="badge badge-neutral">
           <span
@@ -335,11 +449,11 @@ export default function LiveChatPanel() {
           onSubmit={handleSubmit}
           className="flex items-end gap-2 border-t border-line px-5 py-4"
         >
-          <label htmlFor="livechat-composer" className="sr-only">
+          <label htmlFor="messages-composer" className="sr-only">
             Message the Student Affairs Unit
           </label>
           <textarea
-            id="livechat-composer"
+            id="messages-composer"
             ref={composerRef}
             rows={1}
             value={draft}
@@ -348,7 +462,7 @@ export default function LiveChatPanel() {
             maxLength={MAX_CONTENT}
             disabled={!userId}
             placeholder={
-              userId ? "Write to the Unit…  (Enter to send)" : "Sign in to chat"
+              userId ? "Write to the Unit…  (Enter to send)" : "Sign in to send a message"
             }
             className="field max-h-[8.25rem] flex-1 resize-none overflow-y-auto disabled:cursor-not-allowed disabled:opacity-50"
           />
@@ -380,6 +494,7 @@ export default function LiveChatPanel() {
           <ul className="space-y-3">
             {messages.map((message) => {
               const mine = message.senderRole === "STUDENT";
+              const confirming = pendingDeleteId === message.id;
               return (
                 <li
                   key={message.id}
@@ -402,13 +517,50 @@ export default function LiveChatPanel() {
                       {timeLabel(message.createdAt)}
                     </time>
                   </p>
-                  <div
-                    className={`bubble max-w-[85%] whitespace-pre-wrap ${
-                      mine ? "bubble-self" : "bubble-staff"
-                    }`}
-                  >
-                    {message.content}
-                  </div>
+                  {mine ? (
+                    // Own messages are tappable: the tap reveals the delete
+                    // confirm row below. A real <button> (not a click-handling
+                    // div) so keyboard and screen-reader users reach it too,
+                    // with whitespace-pre-wrap kept so formatting survives.
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingDeleteId((current) =>
+                            current === message.id ? null : message.id,
+                          )
+                        }
+                        aria-expanded={confirming}
+                        className="bubble bubble-self max-w-[85%] cursor-pointer whitespace-pre-wrap text-left"
+                      >
+                        {message.content}
+                      </button>
+                      {confirming && (
+                        <div className="mt-1 flex items-center gap-2 text-xs">
+                          <span className="text-muted/70">Delete this message?</span>
+                          <button
+                            type="button"
+                            aria-label="Delete message"
+                            onClick={() => void deleteMessage(message.id)}
+                            className="rounded-full border border-line px-3 py-1 font-semibold text-danger hover:bg-veil"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteId(null)}
+                            className="rounded-full px-2 py-1 font-medium text-muted hover:text-graphite"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bubble bubble-staff max-w-[85%] whitespace-pre-wrap">
+                      {message.content}
+                    </div>
+                  )}
                 </li>
               );
             })}

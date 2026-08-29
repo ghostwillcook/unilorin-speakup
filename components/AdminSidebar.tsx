@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react";
 import AdminDock from "@/components/AdminDock";
 import NeonButton from "@/components/NeonButton";
 import { SpeakUpWordmark, UnilorinLogo } from "@/components/Logo";
+import NotificationIcon from "@/components/NotificationIcon";
 import { useHeaderFold } from "@/lib/useHeaderFold";
 
 /**
@@ -39,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Dashboard", exact: true, icon: <DashboardIcon /> },
   { href: "/admin/complaints", label: "Complaints", icon: <ComplaintsIcon /> },
   { href: "/admin/messages", label: "Messages", icon: <MessagesIcon /> },
-  { href: "/admin/live-chat", label: "Live Chat", icon: <LiveChatIcon /> },
+  { href: "/admin/notifications", label: "Notifications", icon: <NotificationIcon /> },
   { href: "/admin/chat-logs", label: "Chat Logs", icon: <ChatLogsIcon /> },
   { href: "/admin/users", label: "Users", icon: <UsersIcon /> },
   { href: "/admin/settings", label: "Settings", icon: <SettingsIcon /> },
@@ -220,15 +221,6 @@ function MessagesIcon() {
     <Icon>
       <path d="M20.25 12c0 3.73-3.69 6.75-8.25 6.75a9.7 9.7 0 0 1-2.53-.33L5.25 20.25l1.13-3.2C4.98 15.85 3.75 14.05 3.75 12c0-3.73 3.69-6.75 8.25-6.75s8.25 3.02 8.25 6.75Z" />
       <path d="M8.75 11.25h6.5M8.75 14h4" />
-    </Icon>
-  );
-}
-
-function LiveChatIcon() {
-  return (
-    <Icon>
-      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9l-4.2 3.4c-.5.4-1.3 0-1.3-.6V6.5Z" />
-      <path d="M8.5 10h7M8.5 13h4.5" />
     </Icon>
   );
 }

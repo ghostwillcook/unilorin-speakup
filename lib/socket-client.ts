@@ -17,16 +17,6 @@ export interface PublicChatMessage {
   timestamp: string;
 }
 
-export interface DmMessage {
-  id: string;
-  studentId: string;
-  senderRole: "STUDENT" | "ADMIN";
-  content: string;
-  createdAt: string;
-  /** Present only on admin payloads. */
-  studentName?: string;
-}
-
 export interface PresencePayload {
   onlineStudents: number;
   onlineAdmins: number;

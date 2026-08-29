@@ -109,7 +109,9 @@ export default async function handler(
       }
 
       const rows = await prisma.complaintMessage.findMany({
-        where: { complaintId },
+        // deletedAt: null — soft-deleted messages stay in the table (audit
+        // trail) but must not render in the thread.
+        where: { complaintId, deletedAt: null },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: MESSAGE_FIELDS,
       });

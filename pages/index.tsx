@@ -381,7 +381,7 @@ function BentoGrid() {
         <div className="wl-card wl-card-hover p-7" id="chat">
           <h3 className="wl-h3 text-xl">Anonymous by default</h3>
           <p className="mt-3 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
-            In the live chat you are a number, never a name — to other students,
+            In the anonymous room you are a number, never a name — to other students,
             always.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
@@ -480,7 +480,7 @@ function NumberedFeatures() {
       n: "02",
       tag: "Report",
       title: "Say what happened",
-      body: "Lodge a complaint, message Student Affairs privately, or raise it with peers in the live chat.",
+      body: "Lodge a complaint, message the Unit privately, or talk it over with peers in the anonymous room.",
       cls: "wl-feature-2",
     },
     {
@@ -552,14 +552,14 @@ function StatsBand() {
       suffix: "",
       badge: "Ways to raise it",
       badgeCls: "bg-[var(--wl-yellow)] text-[var(--wl-ink)]",
-      caption: "Complaint, direct message, or live chat.",
+      caption: "A complaint, a private message, or the anonymous room.",
     },
     {
       value: 100,
       suffix: "%",
       badge: "Anonymous to students",
       badgeCls: "bg-[var(--wl-pink)] text-white",
-      caption: "In the live chat you are a pseudonym, never a name.",
+      caption: "In the anonymous room you are a pseudonym, never a name.",
     },
     {
       value: 24,
@@ -782,7 +782,7 @@ function FaqSection() {
   const items = [
     {
       q: "Will other students know it's me?",
-      a: "No. In the live chat you appear only as a pseudonym like Anonymous #42 — your name is never shown to other students. Complaints and direct messages carry your identity to the Student Affairs Unit alone, because that is what lets them actually resolve your case.",
+      a: "No. In the anonymous room you appear only as a pseudonym like Anonymous #42 — your name is never shown to other students. Complaints and private messages carry your identity to the Student Affairs Unit alone, because that is what lets them actually resolve your case.",
     },
     {
       q: "What can I report?",

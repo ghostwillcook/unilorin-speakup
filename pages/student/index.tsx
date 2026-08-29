@@ -12,8 +12,8 @@ import { useHeaderFold } from "@/lib/useHeaderFold";
 import StudentDock from "@/components/StudentDock";
 import ComplaintThread from "@/components/ComplaintThread";
 import ComplaintForm from "@/components/ComplaintForm";
-import DMPanel from "@/components/DMPanel";
-import LiveChatPanel from "@/components/LiveChatPanel";
+import MessagesPanel from "@/components/MessagesPanel";
+import NotificationBell from "@/components/NotificationBell";
 import AnonymousRoomPanel from "@/components/AnonymousRoomPanel";
 import NeonButton from "@/components/NeonButton";
 
@@ -33,21 +33,23 @@ interface StudentComplaint {
 /**
  * The student console.
  *
- * Five sections — My Complaints (the default, per the spec: a signed-in
- * student lands on their complaints), Lodge Complaint, Direct Messages, Live
- * Chat, and the Anonymous Room — reached through a desktop side rail that
- * mirrors the admin console's, and through the mobile bottom dock. Each
- * complaint opens its own dedicated two-way thread (ComplaintThread),
- * entirely separate from DMs and Live Chat.
+ * Four sections — My Complaints (the default, per the spec: a signed-in
+ * student lands on their complaints), Lodge Complaint, Messages, and the
+ * Anonymous Room — reached through a desktop side rail that mirrors the admin
+ * console's, and through the mobile bottom dock. Each complaint opens its own
+ * dedicated two-way thread (ComplaintThread), entirely separate from Messages.
  *
- * Live Chat vs Anonymous Room: Live Chat is the student's private
- * conversation with the Unit; the Anonymous Room is the public
- * student-to-student square under a pseudonym. Same socket, different tables,
- * different promises — kept as separate sections so neither leaks into the
- * other's expectations.
+ * Messages is the one private channel with the Unit that used to be split
+ * across Direct Messages and Live Chat; the histories were merged, so there
+ * is a single panel (MessagesPanel) over the livechat model and API.
+ *
+ * Messages vs Anonymous Room: Messages is the student's private conversation
+ * with the Unit; the Anonymous Room is the public student-to-student square
+ * under a pseudonym. Same socket, different tables, different promises — kept
+ * as separate sections so neither leaks into the other's expectations.
  */
 
-type SectionKey = "complaints" | "lodge" | "dm" | "chat" | "room";
+type SectionKey = "complaints" | "lodge" | "messages" | "room";
 
 const SECTIONS: Array<{
   key: SectionKey;
@@ -55,17 +57,20 @@ const SECTIONS: Array<{
 }> = [
   { key: "complaints", label: "My Complaints" },
   { key: "lodge", label: "Lodge Complaint" },
-  { key: "dm", label: "Direct Messages" },
-  { key: "chat", label: "Live Chat" },
+  { key: "messages", label: "Messages" },
   { key: "room", label: "Anonymous Room" },
 ];
 
-/** Dock bar slots (first three; Menu is the fourth). The sheet carries all
- *  five sections, which is why Lodge Complaint is not on the bar itself. */
+/** Dock destinations. The first three are the dock bar's slots (the fourth
+ *  bar slot is always Menu); the account sheet lists ALL entries, which is why
+ *  Lodge Complaint rides along here as sheet-only — it never fits on the bar.
+ *  The Messages icon is the envelope ("dm"), not the chat bubble — the private
+ *  thread must never read as the Anonymous Room's square. */
 const DOCK_TABS = [
   { key: "complaints", label: "Complaints", icon: "complaint" as const },
-  { key: "chat", label: "Live Chat", icon: "chat" as const },
+  { key: "messages", label: "Messages", icon: "dm" as const },
   { key: "room", label: "Room", icon: "room" as const },
+  { key: "lodge", label: "Lodge Complaint", icon: "complaint" as const },
 ];
 
 export default function StudentDashboard({ user }: { user: SessionUser }) {
@@ -78,8 +83,11 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
   const [toast, setToast] = useState<{ id: string } | null>(null);
 
   // Fold the header away on scroll, but only below md — above that the
-  // header is the roomier desktop bar and stays put.
-  const folded = useHeaderFold();
+  // header is the roomier desktop bar and stays put. `pinned` while the
+  // notification dropdown is open: the panel hangs off the header, so the
+  // header must not fold away mid-read.
+  const [bellOpen, setBellOpen] = useState(false);
+  const folded = useHeaderFold({ pinned: bellOpen });
 
   const load = useCallback(async () => {
     try {
@@ -131,25 +139,39 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
       </Head>
 
       <div className="min-h-screen">
+        {/* z-20 normally; z-40 while a notification dropdown is open. The
+            dropdown lives INSIDE this header, so it is capped by the header's
+            own stacking context — its z-40 alone cannot clear the mobile dock
+            (z-30) or the dock's account sheet (z-31). Lifting the whole
+            header while the bell's menu is up (onOpenChange below) puts every
+            descendant, dropdown included, above them. */}
         <header
-          className={`fold-header sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md ${
+          className={`fold-header sticky top-0 ${
+            bellOpen ? "z-40" : "z-20"
+          } border-b border-line bg-canvas/85 backdrop-blur-md ${
             folded ? "fold-header-hidden" : ""
           }`}
         >
           {/* Mobile: the spec's primary home header (greeting + avatar). The
               wl-scope wrapper carries the --wl-* custom properties that
-              .wl-greet-name, .wl-greet-sub and .wl-avatar consume. */}
+              .wl-greet-name, .wl-greet-sub and .wl-avatar consume. The bell
+              sits between the greeting and the avatar — outside the wl-*
+              vocabulary, plain app classes (btn-icon/badge) instead. */}
           <div className="wl-scope mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-3 md:hidden">
             <div className="min-w-0">
               <p className="wl-greet-name truncate">Hello, {firstName(user.name)}</p>
               <p className="wl-greet-sub truncate">{user.studentId} · Student</p>
             </div>
-            <span className="wl-avatar" aria-hidden="true">
-              {initialsFor(user.name)}
-            </span>
+            <div className="flex shrink-0 items-center gap-3">
+              <NotificationBell onOpenChange={setBellOpen} />
+              <span className="wl-avatar" aria-hidden="true">
+                {initialsFor(user.name)}
+              </span>
+            </div>
           </div>
 
-          {/* Desktop header: brand + identity + sign out. */}
+          {/* Desktop header: brand + identity + sign out, with the
+              notification bell beside the sign-out control. */}
           <div className="mx-auto hidden w-full max-w-5xl items-center justify-between gap-4 px-5 py-3 md:flex">
             <div className="flex items-center gap-3">
               <UnilorinLogo size={34} />
@@ -160,6 +182,7 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
                 <p className="text-sm font-medium text-graphite">{user.name}</p>
                 <p className="font-mono text-xs text-muted">{user.studentId}</p>
               </div>
+              <NotificationBell onOpenChange={setBellOpen} />
               <button
                 className="btn-ghost"
                 onClick={() => void signOut({ callbackUrl: "/" })}
@@ -241,8 +264,7 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
                 />
               )}
 
-              {section === "dm" && <DMPanel />}
-              {section === "chat" && <LiveChatPanel />}
+              {section === "messages" && <MessagesPanel />}
               {section === "room" && <AnonymousRoomPanel />}
             </SlideSwitch>
           </main>
@@ -535,7 +557,9 @@ function SectionIcon({ kind }: { kind: SectionKey }) {
       </svg>
     );
   }
-  if (kind === "dm") {
+  if (kind === "messages") {
+    // The envelope: Messages is the private line to the Unit, distinct from
+    // the Anonymous Room's crowd icon below.
     return (
       <svg {...common}>
         <rect x="3.5" y="5.5" width="17" height="11" rx="3" />

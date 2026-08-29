@@ -18,24 +18,32 @@
  * Wire contract (mirrored by lib/socket-client.ts):
  *
  *   in    chat:send             { content }
- *         dm:send               { studentId?, content }
  *         chat:history:request  {}
  *         complaint:join        { complaintId }
  *         complaint:send        { complaintId, content }
+ *         complaint:delete      { messageId }
  *         livechat:join         { conversationId? }
  *         livechat:send         { content }
  *         livechat:reply        { conversationId, content }
+ *         livechat:delete       { messageId }
+ *         notification:send     { title, body, userId? }   ADMIN
  *   out   chat:history          PublicChatMessage[]   last 50, oldest first
  *         chat:message          PublicChatMessage     broadcast to everyone
  *         chat:error            { message }           to the one sender
- *         dm:new                DmMessage             to user:<id> and "admins"
  *         complaint:new         ComplaintMessage      to complaint:<id>
+ *         complaint:deleted     { id }                to complaint:<id>
  *         livechat:new          LiveMessage           to live:<conversationId>
- *         livechat:inbox        InboxSummary          to "admins" (unread bump)
+ *         livechat:deleted      { id }                to live:<conversationId>
+ *         notification:new      { title, body }       to user:<id>
+ *         notification:sent     { count }             to the sending admin
  *         presence              { onlineStudents, onlineAdmins }
  *         session               { pseudonym }         on connect
  *
- * The three new families are thin realtime skins over REST-backed tables:
+ * dm:send/dm:new are gone: the DM channel merged into Live Chat ("Messages")
+ * — DirectMessage's rows live in LiveMessage since migration
+ * 20260829100000_merge_dm_livechat.
+ *
+ * The message families are thin realtime skins over REST-backed tables:
  * ComplaintMessage and LiveMessage. Every socket write is a plain
  * prisma.*.create — the same rows /api/complaints/[id]/messages and
  * /api/livechat write — so the database is the source of truth and a socket
@@ -43,7 +51,8 @@
  * is per-room and per-write: joining complaint:<id> requires owning the
  * complaint or being an admin, and a student's livechat:send can only ever
  * address their own conversation because the conversation row is looked up BY
- * their user id, never by a client-supplied conversation id.
+ * their user id, never by a client-supplied conversation id. Deletion is the
+ * same rule per table: students remove their own messages, admins any.
  *
  * PublicChatMessage carries no userId, ever. That is enforced here by the
  * `select` on every ChatMessage query rather than by remembering to strip a
@@ -142,9 +151,6 @@ const SECRET =
 
 const HISTORY_LIMIT = 50;
 const MAX_CHAT_LENGTH = 2000;
-/** Matches MAX_CONTENT in pages/api/dm/[studentId].ts: both paths write the
- *  same rows, so they must accept the same input. */
-const MAX_DM_LENGTH = 4000;
 /** Matches the REST routes for complaint threads and Live Chat. */
 const MAX_THREAD_LENGTH = 4000;
 const RATE_WINDOW_MS = 60_000;
@@ -178,6 +184,19 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
 }
 
 if (!process.env.NEXTAUTH_SECRET) {
+  // In production the dev fallback is a forged-token hole, not a convenience:
+  // the fallback string is public (it ships in this repo), so anyone can mint
+  // a token it accepts. The web app refuses the fallback in production, and
+  // this process must too — a misconfigured deploy should fail loudly at
+  // boot, not authenticate an attacker until someone notices.
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "  [socket] NEXTAUTH_SECRET is not set in production — refusing to start\n" +
+        "           with the insecure dev fallback. Set the secret (identical to\n" +
+        "           the web app's) and redeploy.",
+    );
+    process.exit(1);
+  }
   console.warn(
     "  [socket] NEXTAUTH_SECRET is not set — falling back to the insecure dev\n" +
       "           secret. Handshakes only succeed while the web app uses the same\n" +
@@ -377,30 +396,12 @@ const CHAT_PUBLIC_FIELDS = {
   timestamp: true,
 };
 
-const DM_FIELDS = {
-  id: true,
-  studentId: true,
-  senderRole: true,
-  content: true,
-  createdAt: true,
-};
-
 function toPublicChatMessage(row) {
   return {
     id: row.id,
     pseudonym: row.pseudonym,
     content: row.content,
     timestamp: row.timestamp.toISOString(),
-  };
-}
-
-function toDmMessage(row) {
-  return {
-    id: row.id,
-    studentId: row.studentId,
-    senderRole: row.senderRole,
-    content: row.content,
-    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -594,97 +595,6 @@ async function handleChatSend(socket, payload) {
     io.emit("chat:message", toPublicChatMessage(row));
   } catch (error) {
     console.error("[socket] chat:send failed:", errText(error));
-    socket.emit("chat:error", {
-      message: "Message could not be delivered. Please try again.",
-    });
-  }
-}
-
-async function handleDmSend(socket, payload) {
-  const user = socket.data.user;
-  try {
-    const content = readContent(payload);
-    if (content === null) {
-      socket.emit("chat:error", { message: "Message cannot be empty." });
-      return;
-    }
-    if (content.length > MAX_DM_LENGTH) {
-      socket.emit("chat:error", {
-        message: `Message must be ${MAX_DM_LENGTH} characters or fewer.`,
-      });
-      return;
-    }
-
-    // Validation runs first so a rejected message never costs the sender part
-    // of their allowance.
-    const settings = await getSettings();
-    const verdict = checkRateLimit(user.id, settings.chatRateLimitPerMin);
-    if (!verdict.ok) {
-      socket.emit("chat:error", {
-        message: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
-      });
-      return;
-    }
-
-    // `threadId` is a User.id — the thread owner — not a matriculation number.
-    // The schema keys DM threads by the student because students address the
-    // Unit collectively and any admin may answer.
-    let threadId;
-    let studentName = user.name;
-
-    if (user.role === "ADMIN") {
-      const requested =
-        payload && typeof payload === "object" && !Array.isArray(payload)
-          ? payload.studentId
-          : undefined;
-      if (typeof requested !== "string" || requested.trim().length === 0) {
-        socket.emit("chat:error", {
-          message: "Select a student before sending a reply.",
-        });
-        return;
-      }
-      threadId = requested.trim();
-
-      // Confirms the target exists and is a student. Also rejects an admin
-      // opening a thread keyed to another admin, which the schema allows but
-      // the product does not.
-      const student = await prisma.user.findUnique({
-        where: { id: threadId },
-        select: { name: true, role: true },
-      });
-      if (!student || student.role !== "STUDENT") {
-        socket.emit("chat:error", { message: "Student not found." });
-        return;
-      }
-      studentName = student.name;
-    } else {
-      // A student writes to their own thread, full stop. Any studentId in the
-      // payload is ignored rather than validated, so there is no path — not
-      // even a rejected one — for one student to post into another's thread.
-      threadId = user.id;
-    }
-
-    const row = await prisma.directMessage.create({
-      // Author and role come from the verified handshake, never the payload.
-      data: {
-        studentId: threadId,
-        senderId: user.id,
-        senderRole: user.role,
-        content,
-      },
-      select: DM_FIELDS,
-    });
-
-    const message = toDmMessage(row);
-
-    // Delivered to both sides, including the sender's own other tabs: the
-    // student's room and the shared admin room. studentName is added only for
-    // admins, who need it to label the thread in their inbox; the student
-    // already knows whose conversation they are in.
-    io.to(`user:${threadId}`).emit("dm:new", message);
-    io.to("admins").emit("dm:new", { ...message, studentName });
-  } catch (error) {
-    console.error("[socket] dm:send failed:", errText(error));
     socket.emit("chat:error", {
       message: "Message could not be delivered. Please try again.",
     });
@@ -1034,6 +944,215 @@ async function handleLivechatReply(socket, payload) {
   }
 }
 
+/* ------------------------------------------------------- message deletion */
+
+/**
+ * Soft-deletes a message and broadcasts the removal. Authorization per table:
+ * a student may delete their OWN messages only; an admin may delete any
+ * (moderation). Ownership is checked in the UPDATE's WHERE — a student
+ * targeting someone else's row updates zero rows and gets the same 404-shaped
+ * refusal, with no existence oracle.
+ *
+ * Payload: { messageId } (the message's own id — NOT the conversation/complaint
+ * id, so each handler routes by the row it finds).
+ */
+async function deleteMessage(socket, payload, table, roomPrefix, event) {
+  const user = socket.data.user;
+  try {
+    const id =
+      payload && typeof payload === "object" ? payload.messageId : undefined;
+    if (typeof id !== "string" || id.trim().length === 0) {
+      socket.emit("chat:error", { message: "Message not available." });
+      return;
+    }
+
+    // Students only delete their own; admins anything. updateMany (not update)
+    // because the where is a filter, not a unique key.
+    const where = {
+      id: id.trim(),
+      deletedAt: null,
+      ...(user.role === "STUDENT" ? { senderId: user.id } : {}),
+    };
+
+    const rows = await prisma[table].updateMany({
+      where,
+      data: { deletedAt: new Date() },
+    });
+    if (rows.count === 0) {
+      // Already deleted, never existed, or not theirs — all the same answer.
+      socket.emit("chat:error", { message: "Message not available." });
+      return;
+    }
+
+    // The room key differs per table (conversationId vs complaintId); fetch
+    // the row's parent so the removal reaches the right room.
+    const row = await prisma[table].findUnique({
+      where: { id: id.trim() },
+      select:
+        table === "liveMessage"
+          ? { conversationId: true }
+          : { complaintId: true },
+    });
+    if (!row) return;
+    const parentId = row.conversationId ?? row.complaintId;
+    io.to(`${roomPrefix}:${parentId}`).emit(event, { id: id.trim(), parentId });
+  } catch (error) {
+    console.error(`[socket] ${event} failed:`, errText(error));
+    socket.emit("chat:error", {
+      message: "Message could not be removed. Please try again.",
+    });
+  }
+}
+
+function handleLivechatDelete(socket, payload) {
+  return deleteMessage(socket, payload, "liveMessage", "live", "livechat:deleted");
+}
+
+function handleComplaintDelete(socket, payload) {
+  return deleteMessage(
+    socket,
+    payload,
+    "complaintMessage",
+    "complaint",
+    "complaint:deleted",
+  );
+}
+
+/* ------------------------------------------------------- notification events */
+
+/**
+ * The admin's push-notification channel: notification:send { title, body,
+ * userId? }. Broadcasts fan out to every active student as one Notification
+ * row each; a userId targets one student (resolved from the lookup feature's
+ * user ids). Every recipient gets: a row (the in-app center), a realtime
+ * notification:new to their personal room, and a Web Push per subscription.
+ */
+async function handleNotificationSend(socket, payload) {
+  const user = socket.data.user;
+  try {
+    if (user.role !== "ADMIN") {
+      socket.emit("chat:error", { message: "Not authorized." });
+      return;
+    }
+
+    const title =
+      payload && typeof payload === "object"
+        ? typeof payload.title === "string"
+          ? payload.title.trim()
+          : ""
+        : "";
+    const body =
+      payload && typeof payload === "object"
+        ? typeof payload.body === "string"
+          ? payload.body.trim()
+          : ""
+        : "";
+    if (!title || !body) {
+      socket.emit("chat:error", {
+        message: "A notification needs a title and a message.",
+      });
+      return;
+    }
+    // Same caps as the REST twin (pages/api/admin/notifications.ts): the two
+    // paths write the same rows and must accept the same input, and an
+    // over-sized broadcast would fan out per student before failing per push.
+    if (title.length > 120 || body.length > 500) {
+      socket.emit("chat:error", {
+        message: "Keep the title to 120 characters and the message to 500.",
+      });
+      return;
+    }
+
+    // Rate-limit by the ADMIN's id: broadcast fan-out is expensive (a row +
+    // push per student), so an admin's runaway script must not hammer it.
+    const settings = await getSettings();
+    const verdict = checkRateLimit(user.id, settings.chatRateLimitPerMin);
+    if (!verdict.ok) {
+      socket.emit("chat:error", {
+        message: `Sending too quickly. Try again in ${verdict.retryInSeconds}s.`,
+      });
+      return;
+    }
+
+    // Recipients: one student, or every active student.
+    const recipients = payload.userId
+      ? await prisma.user.findMany({
+          where: { id: payload.userId, role: "STUDENT", isActive: true },
+          select: { id: true },
+        })
+      : await prisma.user.findMany({
+          where: { role: "STUDENT", isActive: true },
+          select: { id: true },
+        });
+    if (recipients.length === 0) {
+      socket.emit("chat:error", { message: "No recipients found." });
+      return;
+    }
+
+    await prisma.notification.createMany({
+      data: recipients.map((r) => ({ userId: r.id, title, body })),
+    });
+
+    for (const recipient of recipients) {
+      const payloadOut = { title, body, createdAt: new Date().toISOString() };
+      io.to(`user:${recipient.id}`).emit("notification:new", payloadOut);
+      await pushToUser(recipient.id, title, body);
+    }
+
+    socket.emit("notification:sent", { count: recipients.length });
+  } catch (error) {
+    console.error("[socket] notification:send failed:", errText(error));
+    socket.emit("chat:error", {
+      message: "Notification could not be sent. Please try again.",
+    });
+  }
+}
+
+/**
+ * Web Push delivery. Best-effort by design: a failing subscription (410 Gone
+ * is the standard "uninstalled" signal) is deleted rather than retried, and
+ * an error pushing to one device must never block the loop or the realtime
+ * emit. Silently a no-op when VAPID keys are absent (the channel degrades to
+ * in-app only — the Notification rows and realtime events are the source of
+ * truth).
+ */
+async function pushToUser(userId, title, body) {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+  try {
+    // web-push is imported lazily: it is optional infrastructure, and a
+    // missing/failed import must not take the socket server down.
+    const webpush = (await import("web-push")).default;
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "mailto:studentaffairs@unilorin.edu.ng",
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY,
+    );
+
+    const subs = await prisma.pushSubscription.findMany({
+      where: { userId },
+    });
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          },
+          JSON.stringify({ title, body }),
+        );
+      } catch (error) {
+        // 404/410 = the subscription is dead (uninstalled, expired). Prune;
+        // anything else is transient and the next send retries it.
+        if (error?.statusCode === 404 || error?.statusCode === 410) {
+          await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[socket] web push skipped:", errText(error));
+  }
+}
+
 /* ---------------------------------------------------------------- connection */
 
 io.on("connection", (socket) => {
@@ -1061,9 +1180,6 @@ io.on("connection", (socket) => {
   socket.on("chat:send", (payload) => {
     void handleChatSend(socket, payload);
   });
-  socket.on("dm:send", (payload) => {
-    void handleDmSend(socket, payload);
-  });
   socket.on("complaint:join", (payload) => {
     void handleComplaintJoin(socket, payload);
   });
@@ -1078,6 +1194,15 @@ io.on("connection", (socket) => {
   });
   socket.on("livechat:reply", (payload) => {
     void handleLivechatReply(socket, payload);
+  });
+  socket.on("livechat:delete", (payload) => {
+    void handleLivechatDelete(socket, payload);
+  });
+  socket.on("complaint:delete", (payload) => {
+    void handleComplaintDelete(socket, payload);
+  });
+  socket.on("notification:send", (payload) => {
+    void handleNotificationSend(socket, payload);
   });
 
   // A transport-level error must not take the process with it.
