@@ -62,6 +62,36 @@ export default function StudentDock({
               <p className="font-mono text-xs text-[var(--wl-slate)]">{user.studentId}</p>
             </div>
           </div>
+
+          {/* Every section, because the dock bar itself only carries three —
+              Lodge Complaint lives here (and in My Complaints' own button). */}
+          <div className="mt-4 space-y-1 border-t border-[var(--wl-rule)] pt-3">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onChange(t.key);
+                }}
+                className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--wl-slate)] transition-colors hover:bg-[rgb(16_2_111/0.05)] hover:text-[var(--wl-ink)]"
+                aria-current={t.key === active ? "page" : undefined}
+              >
+                {t.label}
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M9 6l6 6-6 6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                </svg>
+              </button>
+            ))}
+          </div>
+
           <button
             type="button"
             className="wl-auth-submit mt-4"
@@ -74,7 +104,9 @@ export default function StudentDock({
       )}
 
       <nav className="wl-dock" aria-label="Dashboard sections">
-        {tabs.map((t) => (
+        {/* The bar carries the first three sections; the fourth slot is always
+            Menu. Everything is still reachable through the sheet above. */}
+        {tabs.slice(0, 3).map((t) => (
           <button
             key={t.key}
             type="button"

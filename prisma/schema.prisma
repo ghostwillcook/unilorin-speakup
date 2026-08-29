@@ -3,6 +3,10 @@
 // User, Complaint, ChatMessage, Role and Status are the spec's models, ported
 // as written. DirectMessage and Setting are additions required by two resolved
 // decisions: student<->admin DMs, and admin settings that actually take effect.
+// ComplaintMessage and LiveConversation/LiveMessage carry the messaging
+// overhaul: per-complaint two-way threads, and Live Chat as per-student
+// conversations with the Unit. ChatMessage (the old global anonymous room)
+// remains as the Chat Logs historical record.
 
 generator client {
   provider = "prisma-client-js"
@@ -36,6 +40,11 @@ model User {
   dmThread     DirectMessage[] @relation("StudentThread")
   // Messages this user authored, whether student or replying admin.
   sentDms      DirectMessage[] @relation("SentDMs")
+  // Messages this user sent inside complaint threads.
+  complaintMessages ComplaintMessage[] @relation("ComplaintMessages")
+  // This user's Live Chat support conversation with the Unit.
+  liveConversation  LiveConversation?
+  liveMessages      LiveMessage[]    @relation("LiveMessages")
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
@@ -49,15 +58,38 @@ model Complaint {
   title       String
   description String
   status      Status   @default(PENDING)
+  // Superseded by ComplaintMessage for new replies, but kept: existing rows
+  // carry real history, and the field remains the single "outcome note" the
+  // admin console can still set alongside the thread.
   adminReply  String?
   // Supabase Storage object keys, not URLs. The bucket is private; reads are
   // authorized and signed by /api/attachments.
   files       String[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  messages    ComplaintMessage[]
 
   @@index([status, createdAt])
   @@index([userId])
+}
+
+/**
+ * One message in a complaint's dedicated thread. The complaint is the parent
+ * and context: messages can never cross complaints because every row hangs
+ * off exactly one complaintId, and reads are always scoped by it.
+ */
+model ComplaintMessage {
+  id          String    @id @default(cuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User      @relation("ComplaintMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderRole  Role
+  content     String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([complaintId, createdAt])
 }
 
 model ChatMessage {
@@ -93,6 +125,44 @@ model DirectMessage {
   @@index([senderRole, readAt])
 }
 
+/**
+ * Live Chat as the student's own support conversation with the Unit — one per
+ * student (userId @unique), replacing the single global anonymous room, which
+ * lives on only as Chat Logs history. The conversation is the stable identity
+ * the inbox hangs off: status, unread counts, and a pseudonym so the admin
+ * side can show "Anonymous #42" without exposing the student's name.
+ */
+model LiveConversation {
+  id          String       @id @default(cuid())
+  userId      String       @unique
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pseudonym   String
+  status      LiveStatus   @default(OPEN)
+  // Denormalized unread counts so the inbox renders from one row, not one
+  // aggregate query per conversation.
+  adminUnread Int          @default(0)
+  userUnread  Int          @default(0)
+  messages    LiveMessage[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+model LiveMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   LiveConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User             @relation("LiveMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderRole     Role
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
 model Setting {
   key   String @id
   value String
@@ -108,4 +178,10 @@ enum Status {
   IN_REVIEW
   RESOLVED
   REJECTED
+}
+
+enum LiveStatus {
+  OPEN
+  WAITING
+  CLOSED
 }

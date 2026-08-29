@@ -8,11 +8,13 @@ import { EmptyState } from "@/components/GlassCard";
 import StatusBadge, { type ComplaintStatus } from "@/components/StatusBadge";
 import { SlideSwitch } from "@/components/Motion";
 import { dateTimeLabel } from "@/lib/pseudonym";
-import ChatPanel from "@/components/ChatPanel";
-import DMPanel from "@/components/DMPanel";
-import ComplaintForm from "@/components/ComplaintForm";
-import StudentDock from "@/components/StudentDock";
 import { useHeaderFold } from "@/lib/useHeaderFold";
+import StudentDock from "@/components/StudentDock";
+import ComplaintThread from "@/components/ComplaintThread";
+import ComplaintForm from "@/components/ComplaintForm";
+import DMPanel from "@/components/DMPanel";
+import LiveChatPanel from "@/components/LiveChatPanel";
+import NeonButton from "@/components/NeonButton";
 
 interface StudentComplaint {
   id: string;
@@ -23,30 +25,53 @@ interface StudentComplaint {
   files: string[];
   createdAt: string;
   updatedAt: string;
+  lastMessage: { content: string; senderRole: string; createdAt: string } | null;
+  unread: number;
 }
 
-const TABS = [
+/**
+ * The student console.
+ *
+ * Four sections — My Complaints (the default, per the spec: a signed-in
+ * student lands on their complaints), Lodge Complaint, Direct Messages, and
+ * Live Chat — reached through a desktop side rail that mirrors the admin
+ * console's, and through the mobile bottom dock. Each complaint opens its own
+ * dedicated two-way thread (ComplaintThread), entirely separate from DMs and
+ * Live Chat.
+ */
+
+type SectionKey = "complaints" | "lodge" | "dm" | "chat";
+
+const SECTIONS: Array<{
+  key: SectionKey;
+  label: string;
+}> = [
+  { key: "complaints", label: "My Complaints" },
+  { key: "lodge", label: "Lodge Complaint" },
+  { key: "dm", label: "Direct Messages" },
   { key: "chat", label: "Live Chat" },
-  { key: "dm", label: "Direct Message" },
-  { key: "complaint", label: "Lodge Complaint" },
-] as const;
+];
 
-type TabKey = (typeof TABS)[number]["key"];
-
-// The mobile dock mirrors the desktop tab bar but with the spec's shorter
-// labels ("Chat"/"Messages"/"Lodge") and an icon per slot. Keys are shared
-// with TABS so the two navigations stay in lockstep.
+/** Dock bar slots (first three; Menu is the fourth). The sheet carries all
+ *  four sections, which is why Lodge Complaint is not on the bar itself. */
 const DOCK_TABS = [
+  { key: "complaints", label: "Complaints", icon: "complaint" as const },
   { key: "chat", label: "Chat", icon: "chat" as const },
   { key: "dm", label: "Messages", icon: "dm" as const },
-  { key: "complaint", label: "Lodge", icon: "complaint" as const },
 ];
 
 export default function StudentDashboard({ user }: { user: SessionUser }) {
-  const [tab, setTab] = useState<TabKey>("chat");
+  // Complaints open first after login — the spec's default landing view.
+  const [section, setSection] = useState<SectionKey>("complaints");
   const [complaints, setComplaints] = useState<StudentComplaint[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: string } | null>(null);
+
+  // Fold the header away on scroll, but only below md — above that the
+  // header is the roomier desktop bar and stays put.
+  const folded = useHeaderFold();
 
   const load = useCallback(async () => {
     try {
@@ -69,20 +94,23 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
     void load();
   }, [load]);
 
-  const activeIndex = TABS.findIndex((t) => t.key === tab);
+  // The submission toast: non-blocking, tappable to open the new thread,
+  // self-dismissing. It never interrupts what the student was doing.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
-  // Fold the header away on scroll, but only below md — above that the
-  // header is the roomier desktop bar and stays put. Defaults match this
-  // breakpoint, so no options are needed.
-  const folded = useHeaderFold();
+  const selected = complaints.find((c) => c.id === selectedId) ?? null;
 
-  // Greeting pieces for the mobile header row: the first word of the name,
-  // plus a two-letter monogram (first initial of first AND last name).
-  const nameParts = user.name.trim().split(/\s+/);
-  const firstName = nameParts[0] ?? user.name;
-  const initials = (
-    firstName.charAt(0) + (nameParts[nameParts.length - 1] ?? "").charAt(0)
-  ).toUpperCase();
+  const openComplaint = useCallback((id: string) => {
+    setSelectedId(id);
+    setSection("complaints");
+  }, []);
+
+  const activeIndex = SECTIONS.findIndex((s) => s.key === section);
+  const slideKey = section + (section === "complaints" && selectedId ? ":detail" : "");
 
   return (
     <>
@@ -91,29 +119,25 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
       </Head>
 
       <div className="min-h-screen">
-        {/* fold-header[-hidden] carries the translateY transition (globals.css);
-            useHeaderFold only decides WHEN, because only this component knows
-            the bar is sticky and mobile-only. */}
         <header
-          className={`sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md fold-header ${folded ? "fold-header-hidden" : ""}`}
+          className={`fold-header sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md ${
+            folded ? "fold-header-hidden" : ""
+          }`}
         >
-          {/* Mobile greeting row — the spec's "primary home header". wl-scope
-              supplies the --wl-* custom properties that .wl-greet-name,
-              .wl-greet-sub and .wl-avatar consume in globals.css. */}
+          {/* Mobile: the spec's primary home header (greeting + avatar). The
+              wl-scope wrapper carries the --wl-* custom properties that
+              .wl-greet-name, .wl-greet-sub and .wl-avatar consume. */}
           <div className="wl-scope mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-3 md:hidden">
             <div className="min-w-0">
-              <p className="wl-greet-name truncate">Hello, {firstName}</p>
-              <p className="wl-greet-sub truncate">
-                {user.studentId} · Student
-              </p>
+              <p className="wl-greet-name truncate">Hello, {firstName(user.name)}</p>
+              <p className="wl-greet-sub truncate">{user.studentId} · Student</p>
             </div>
             <span className="wl-avatar" aria-hidden="true">
-              {initials}
+              {initialsFor(user.name)}
             </span>
           </div>
 
-          {/* Desktop row — the original header contents, untouched, just
-              hidden on mobile where the greeting row takes over. */}
+          {/* Desktop header: brand + identity + sign out. */}
           <div className="mx-auto hidden w-full max-w-5xl items-center justify-between gap-4 px-5 py-3 md:flex">
             <div className="flex items-center gap-3">
               <UnilorinLogo size={34} />
@@ -134,133 +158,395 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
           </div>
         </header>
 
-        {/* pb-32 keeps the last of the content clear of the floating dock on
-            mobile; desktop has no dock and keeps the original spacing. */}
-        <main className="mx-auto w-full max-w-5xl px-5 py-6 pb-32 md:pb-6">
-          {/* Desktop-only tab bar — on phones the StudentDock below replaces
-              it (same tab keys, plus the account sheet via Menu). */}
-          <nav className="hidden flex-wrap gap-2 md:flex" aria-label="Dashboard sections">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                className={`tab ${tab === t.key ? "tab-active" : ""}`}
-                aria-current={tab === t.key ? "page" : undefined}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
+        <div className="mx-auto flex w-full max-w-5xl">
+          {/* Desktop side rail — the same vocabulary as the admin console's
+              sidebar (nav-link / nav-link-active), per the spec's "side
+              navigation similar to the admin console". */}
+          <aside className="sticky top-[3.75rem] hidden h-fit w-56 shrink-0 flex-col px-3 py-6 lg:flex">
+            <p className="field-label px-3">Communication</p>
+            <nav aria-label="Dashboard sections">
+              <ul className="space-y-0.5">
+                {SECTIONS.map((s) => (
+                  <li key={s.key}>
+                    <button
+                      type="button"
+                      className={`nav-link relative w-full ${
+                        section === s.key ? "nav-link-active" : ""
+                      }`}
+                      aria-current={section === s.key ? "page" : undefined}
+                      onClick={() => {
+                        setSection(s.key);
+                        setSelectedId(null);
+                      }}
+                    >
+                      {section === s.key && (
+                        <span
+                          className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full bg-accent"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <SectionIcon kind={s.key} />
+                      <span className="truncate">{s.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </aside>
 
-          {warning && (
-            <div className="notice notice-warn mt-5" role="status">
-              {warning}
-            </div>
-          )}
+          <main className="w-full min-w-0 px-5 pb-32 pt-6 md:pb-6 lg:pl-2">
+            {warning && (
+              <div className="notice notice-warn mb-5" role="status">
+                {warning}
+              </div>
+            )}
 
-          <div className="mt-5">
-            <SlideSwitch activeKey={tab} index={activeIndex}>
-              {tab === "chat" && <ChatPanel />}
-              {tab === "dm" && <DMPanel />}
-              {tab === "complaint" && (
-                <div className="space-y-6">
-                  <ComplaintForm onSubmitted={() => void load()} />
-                  <section className="surface overflow-hidden">
-                    <div className="border-b border-line px-5 py-4">
-                      <h2 className="text-graphite text-lg font-semibold">
-                        Your complaints
-                      </h2>
-                      <p className="mt-0.5 text-sm text-muted">
-                        Status updates and replies from the Unit appear here.
-                      </p>
-                    </div>
+            <SlideSwitch activeKey={slideKey} index={activeIndex}>
+              {section === "complaints" &&
+                (selected ? (
+                  <ComplaintDetail
+                    complaint={selected}
+                    onBack={() => {
+                      setSelectedId(null);
+                      void load();
+                    }}
+                  />
+                ) : (
+                  <MyComplaints
+                    complaints={complaints}
+                    loaded={loaded}
+                    onOpen={openComplaint}
+                    onLodge={() => setSection("lodge")}
+                  />
+                ))}
 
-                    {complaints.length === 0 ? (
-                      <EmptyState
-                        title={
-                          loaded
-                            ? "You have not lodged any complaints yet."
-                            : "Loading…"
-                        }
-                        hint={
-                          loaded
-                            ? "Anything you submit above will show up here with its status."
-                            : undefined
-                        }
-                      />
-                    ) : (
-                      <ul className="divide-y divide-line">
-                        {complaints.map((c) => (
-                          <li key={c.id} className="px-5 py-4">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <h3 className="font-semibold text-graphite">
-                                {c.title}
-                              </h3>
-                              <StatusBadge status={c.status} />
-                            </div>
-                            <p className="mt-1 text-xs text-muted">
-                              {dateTimeLabel(c.createdAt)}
-                            </p>
-                            <p className="mt-2 whitespace-pre-wrap text-sm text-muted">
-                              {c.description}
-                            </p>
-
-                            {c.files.length > 0 && (
-                              <ul className="mt-3 flex flex-wrap gap-2">
-                                {c.files.map((f, i) => (
-                                  <li key={f}>
-                                    {/* The bucket is private: `f` is a storage
-                                        object key, so it has to be fetched
-                                        through the authorising route rather
-                                        than linked to directly. */}
-                                    <a
-                                      href={`/api/attachments/${f}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="badge border border-line bg-veil text-accent"
-                                    >
-                                      Attachment {i + 1}
-                                    </a>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-
-                            {c.adminReply && (
-                              <div className="bubble bubble-staff mt-3 max-w-none">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-accent/80">
-                                  Students Affairs Unit
-                                </p>
-                                <p className="mt-1 whitespace-pre-wrap">
-                                  {c.adminReply}
-                                </p>
-                              </div>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                </div>
+              {section === "lodge" && (
+                <ComplaintForm
+                  onSubmitted={(id) => {
+                    void load();
+                    if (id) setToast({ id });
+                  }}
+                />
               )}
-            </SlideSwitch>
-          </div>
-        </main>
 
-        {/* The floating bottom dock, mobile only — wl-scope for the --wl-*
-            vars its pill/sheet classes need. Sign-out lands back on the
-            landing page, same as the desktop header button. */}
+              {section === "dm" && <DMPanel />}
+              {section === "chat" && <LiveChatPanel />}
+            </SlideSwitch>
+          </main>
+        </div>
+
+        {/* Submission confirmation: a card above the dock, tap to open the
+            new thread, dismiss to keep going. Non-blocking by construction —
+            it overlays nothing interactive and times itself out. */}
+        {toast && (
+          <div
+            className="wl-scope fixed inset-x-4 z-40 md:inset-x-auto md:left-1/2 md:w-[26rem] md:-translate-x-1/2"
+            style={{ bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}
+            role="status"
+          >
+            <div className="flex items-center gap-3 rounded-2xl border border-[rgb(16_2_111/0.1)] bg-white px-4 py-3.5 shadow-[0_24px_48px_rgb(16_2_111/0.18)]">
+              <span
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--wl-violet)] text-white"
+                aria-hidden="true"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24">
+                  <path
+                    d="m5 13 4 4L19 7"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                </svg>
+              </span>
+              <button
+                type="button"
+                className="min-w-0 flex-1 text-left"
+                onClick={() => {
+                  openComplaint(toast.id);
+                  setToast(null);
+                }}
+              >
+                <p className="text-sm font-bold text-[var(--wl-ink)]">
+                  Complaint Submitted
+                </p>
+                <p className="truncate text-xs text-[var(--wl-slate)]">
+                  Tap to open the conversation with the Unit
+                </p>
+              </button>
+              <button
+                type="button"
+                className="btn-icon h-8 w-8 shrink-0 rounded-full"
+                aria-label="Dismiss"
+                onClick={() => setToast(null)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M6 6l12 12M18 6L6 18"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mobile navigation dock. */}
         <div className="wl-scope md:hidden">
           <StudentDock
             tabs={DOCK_TABS}
-            active={tab}
-            onChange={(k) => setTab(k as TabKey)}
+            active={section}
+            onChange={(k) => {
+              setSection(k as SectionKey);
+              setSelectedId(null);
+            }}
             user={user}
             onSignOut={() => void signOut({ callbackUrl: "/" })}
           />
         </div>
       </div>
     </>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* My Complaints list                                                         */
+/* ------------------------------------------------------------------------- */
+
+function MyComplaints({
+  complaints,
+  loaded,
+  onOpen,
+  onLodge,
+}: {
+  complaints: StudentComplaint[];
+  loaded: boolean;
+  onOpen: (id: string) => void;
+  onLodge: () => void;
+}) {
+  return (
+    <section className="surface overflow-hidden">
+      <div className="border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-graphite">My Complaints</h2>
+            <p className="mt-0.5 text-sm text-muted">
+              Each complaint has its own conversation with the Unit.
+            </p>
+          </div>
+          <NeonButton onClick={onLodge}>Lodge a complaint</NeonButton>
+        </div>
+      </div>
+
+      {complaints.length === 0 ? (
+        <EmptyState
+          title={loaded ? "You have not lodged any complaints yet." : "Loading…"}
+          hint={
+            loaded
+              ? "When you submit one, it appears here with its own thread you and the Unit can talk in."
+              : undefined
+          }
+        />
+      ) : (
+        <ul className="divide-y divide-line">
+          {complaints.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-veil"
+                onClick={() => onOpen(c.id)}
+                aria-label={`Open complaint: ${c.title}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate font-semibold text-graphite">
+                      {c.title}
+                    </h3>
+                    {c.unread > 0 && (
+                      <span className="badge badge-pending">{c.unread} new</span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {dateTimeLabel(c.updatedAt)}
+                  </p>
+                  {c.lastMessage && (
+                    <p className="mt-1.5 truncate text-sm text-muted">
+                      <span
+                        className={
+                          c.lastMessage.senderRole === "ADMIN"
+                            ? "font-semibold text-accent"
+                            : ""
+                        }
+                      >
+                        {c.lastMessage.senderRole === "ADMIN" ? "Unit: " : "You: "}
+                      </span>
+                      {c.lastMessage.content}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <StatusBadge status={c.status} />
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    className="text-muted/50"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="m9 6 6 6-6 6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                  </svg>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* Complaint detail = the record + its dedicated thread                        */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The complaint itself is the context header; the thread below it is the
+ * conversation about it. On phones the thread's ChatShell goes full-screen
+ * with a back button of its own, so this pair reads as one flow.
+ */
+function ComplaintDetail({
+  complaint,
+  onBack,
+}: {
+  complaint: StudentComplaint;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      {/* The record: what was submitted, attachments, status. Kept as its own
+          card so the thread is clearly the conversation ABOUT it. */}
+      <section className="surface overflow-hidden">
+        <div className="border-b border-line px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-graphite">
+                {complaint.title}
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                Lodged {dateTimeLabel(complaint.createdAt)}
+              </p>
+            </div>
+            <StatusBadge status={complaint.status} />
+          </div>
+        </div>
+
+        <div className="px-5 py-4">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-graphite/85">
+            {complaint.description}
+          </p>
+
+          {complaint.files.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {complaint.files.map((f, i) => (
+                <li key={f}>
+                  {/* The bucket is private: `f` is a storage object key, so it
+                      has to be fetched through the authorising route rather
+                      than linked to directly. */}
+                  <a
+                    href={`/api/attachments/${f}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="badge border border-line bg-veil text-accent"
+                  >
+                    Attachment {i + 1}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <ComplaintThread
+        complaintId={complaint.id}
+        viewerRole="STUDENT"
+        title="Conversation"
+        subtitle="You and the Unit, about this complaint"
+        onBack={onBack}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* ------------------------------------------------------------------------- */
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.charAt(0).toUpperCase() ?? "";
+  const last =
+    parts.length > 1 ? parts[parts.length - 1].charAt(0).toUpperCase() : "";
+  return first + last || "S";
+}
+
+function SectionIcon({ kind }: { kind: SectionKey }) {
+  const common = {
+    viewBox: "0 0 24 24",
+    className: "h-[1.15rem] w-[1.15rem] shrink-0",
+    fill: "none" as const,
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+  };
+
+  if (kind === "complaints") {
+    return (
+      <svg {...common}>
+        <path d="M13.5 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V8.25L13.5 3Z" />
+        <path d="M13.25 3.25V8.5h5.25" />
+        <path d="M8.75 13h6.5M8.75 16.5h4" />
+      </svg>
+    );
+  }
+  if (kind === "lodge") {
+    return (
+      <svg {...common}>
+        <path d="M12 4.5 21 19.5H3L12 4.5Z" />
+        <path d="M12 10v4" />
+        <circle cx="12" cy="16.8" r="0.9" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  if (kind === "dm") {
+    return (
+      <svg {...common}>
+        <rect x="3.5" y="5.5" width="17" height="11" rx="3" />
+        <path d="m4.5 7 7.5 5 7.5-5" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9l-4.2 3.4c-.5.4-1.3 0-1.3-.6V6.5Z" />
+    </svg>
   );
 }
 

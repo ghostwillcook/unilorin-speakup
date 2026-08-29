@@ -6,70 +6,64 @@ import ChatShell from "@/components/ChatShell";
 import { EmptyState } from "@/components/GlassCard";
 import NeonButton from "@/components/NeonButton";
 import { timeLabel } from "@/lib/pseudonym";
-import { useSocket } from "@/lib/socket-client";
-import type { DmMessage } from "@/lib/socket-client";
+import { statusLabel, useSocket } from "@/lib/socket-client";
 
 /**
- * The student's private thread with the Students Affairs Unit.
+ * Live Chat — the student's own real-time conversation with the Students
+ * Affairs Unit (one conversation per student, persisted in LiveMessage).
  *
- * Deliberately dual-path: the socket server carries live delivery, but it is a
- * separate process that may simply not be running (or cold-starting), and a
- * student in distress must never be told to come back later. When the socket
- * is down the same message goes out over POST /api/dm/[studentId] and persists
- * identically, so nothing is lost — only the instant echo is. Users see
- * transport details never: the offline notice is one calm sentence about their
- * messages, not a command to run.
+ * The REST route is the spine: history loads from /api/livechat on every mount,
+ * and sends fall back to it whenever the socket is not connected — which, on a
+ * cold free-tier socket server, is routine rather than exceptional. The socket
+ * only ever ADDS liveness (instant echo, instant replies); it is never load-
+ * bearing. That inversion of the old global-room design is what makes a
+ * refresh-safe Live Chat: the database is the source of truth.
+ *
+ * All user-facing status copy is production copy — no npm commands, no
+ * terminal instructions (the old room's messages are gone by design).
  */
 
-/** Mirrors MAX_DM_LENGTH in server/socket.mjs and the REST route. */
-const MAX_DM_LENGTH = 4000;
-
-const NEAR_BOTTOM_PX = 96;
-const COMPOSER_MAX_PX = 132;
-
+const MAX_CONTENT = 4000;
 const STAFF_LABEL = "Students Affairs";
+
+interface LiveChatMessage {
+  id: string;
+  conversationId: string;
+  senderRole: "STUDENT" | "ADMIN";
+  content: string;
+  createdAt: string;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Both the REST body and the socket payload are untrusted until narrowed. */
-function asDmMessage(value: unknown): DmMessage | null {
+function asLiveMessage(value: unknown): LiveChatMessage | null {
   if (!isRecord(value)) return null;
-  const { id, studentId, senderRole, content, createdAt, studentName } = value;
+  const { id, conversationId, senderRole, content, createdAt } = value;
   if (
     typeof id !== "string" ||
-    typeof studentId !== "string" ||
+    typeof conversationId !== "string" ||
     typeof content !== "string" ||
     typeof createdAt !== "string"
   ) {
     return null;
   }
   if (senderRole !== "STUDENT" && senderRole !== "ADMIN") return null;
-
-  const message: DmMessage = { id, studentId, senderRole, content, createdAt };
-  if (typeof studentName === "string") message.studentName = studentName;
-  return message;
+  return { id, conversationId, senderRole, content, createdAt };
 }
 
-function readApiError(value: unknown, fallback: string): string {
-  if (isRecord(value) && typeof value.error === "string" && value.error.trim()) {
-    return value.error;
-  }
-  return fallback;
-}
-
-/** ISO timestamps sort lexicographically, so id only breaks exact ties. */
-function byTime(a: DmMessage, b: DmMessage): number {
+function byTime(a: LiveChatMessage, b: LiveChatMessage): number {
   if (a.createdAt === b.createdAt) return a.id.localeCompare(b.id);
   return a.createdAt < b.createdAt ? -1 : 1;
 }
 
-export default function DMPanel() {
+export default function LiveChatPanel() {
   const { data: session, status: authStatus } = useSession();
   const { socket, status } = useSocket(true);
 
-  const [messages, setMessages] = useState<DmMessage[]>([]);
+  const [messages, setMessages] = useState<LiveChatMessage[]>([]);
+  const [pseudonym, setPseudonym] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -83,9 +77,7 @@ export default function DMPanel() {
   const userId = session?.user?.id ?? null;
   const online = status === "online";
 
-  /** Single merge point, so a REST insert and a socket echo of the same row
-   *  collapse into one bubble instead of two. */
-  const mergeMessage = useCallback((incoming: DmMessage) => {
+  const mergeMessage = useCallback((incoming: LiveChatMessage) => {
     setMessages((prev) => {
       if (prev.some((row) => row.id === incoming.id)) return prev;
       return [...prev, incoming].sort(byTime);
@@ -96,7 +88,6 @@ export default function DMPanel() {
 
   useEffect(() => {
     if (!userId) {
-      // Still resolving the session, or signed out; nothing to fetch yet.
       if (authStatus !== "loading") setLoading(false);
       return;
     }
@@ -106,22 +97,24 @@ export default function DMPanel() {
 
     void (async () => {
       try {
-        const res = await fetch(`/api/dm/${encodeURIComponent(userId)}`, {
+        const res = await fetch("/api/livechat", {
           headers: { Accept: "application/json" },
         });
         const body: unknown = await res.json().catch(() => null);
         if (!active) return;
 
         if (!res.ok) {
-          setError(readApiError(body, "Could not load your conversation."));
+          setError("Live chat is temporarily unavailable. Please try again.");
           return;
         }
+        if (!isRecord(body)) return;
 
-        const rows =
-          isRecord(body) && Array.isArray(body.messages) ? body.messages : [];
-        const parsed: DmMessage[] = [];
+        if (typeof body.pseudonym === "string") setPseudonym(body.pseudonym);
+
+        const rows = Array.isArray(body.messages) ? body.messages : [];
+        const parsed: LiveChatMessage[] = [];
         for (const raw of rows) {
-          const message = asDmMessage(raw);
+          const message = asLiveMessage(raw);
           if (message) parsed.push(message);
         }
         parsed.sort(byTime);
@@ -141,24 +134,31 @@ export default function DMPanel() {
     };
   }, [authStatus, reloadKey, userId]);
 
-  /* ------------------------------------------------------------- listeners */
+  /* -------------------------------------------------------------- realtime */
 
   useEffect(() => {
     if (!socket || !userId) return;
 
-    // Named handler so the cleanup below can actually detach it — an anonymous
-    // function would accumulate one live listener per re-render.
-    function handleDmNew(payload: unknown): void {
-      const message = asDmMessage(payload);
-      // The admin room receives every thread; only ours belongs in this panel.
-      if (!message || message.studentId !== userId) return;
-      mergeMessage(message);
+    function handleNew(payload: unknown): void {
+      const message = asLiveMessage(payload);
+      if (message) mergeMessage(message);
+    }
+    function handleConversation(payload: unknown): void {
+      if (isRecord(payload) && typeof payload.pseudonym === "string") {
+        setPseudonym(payload.pseudonym);
+      }
     }
 
-    socket.on("dm:new", handleDmNew);
+    socket.on("livechat:new", handleNew);
+    socket.on("livechat:conversation", handleConversation);
+
+    // Announce interest so the server can room this socket. Safe to repeat:
+    // join is idempotent and re-fires on reconnect.
+    socket.emit("livechat:join", {});
 
     return () => {
-      socket.off("dm:new", handleDmNew);
+      socket.off("livechat:new", handleNew);
+      socket.off("livechat:conversation", handleConversation);
     };
   }, [mergeMessage, socket, userId]);
 
@@ -167,8 +167,6 @@ export default function DMPanel() {
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    // Never yank the view out from under someone reading back through the
-    // thread; only follow when they are already at the end.
     if (nearBottom.current) el.scrollTop = el.scrollHeight;
   }, [messages.length, loading]);
 
@@ -176,7 +174,7 @@ export default function DMPanel() {
     const el = listRef.current;
     if (!el) return;
     nearBottom.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+      el.scrollHeight - el.scrollTop - el.clientHeight < 96;
   }, []);
 
   /* -------------------------------------------------------------- composer */
@@ -184,9 +182,9 @@ export default function DMPanel() {
   const handleDraftChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
       const el = event.target;
-      setDraft(el.value.slice(0, MAX_DM_LENGTH));
+      setDraft(el.value.slice(0, MAX_CONTENT));
       el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_PX)}px`;
+      el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
     },
     [],
   );
@@ -208,18 +206,18 @@ export default function DMPanel() {
 
     setError(null);
 
-    // Live path: the server writes the row and echoes "dm:new" back to this
-    // student's room, so the bubble arrives through the listener above.
+    // Live path: the server writes the row and echoes livechat:new back.
     if (socket && online) {
-      socket.emit("dm:send", { content });
+      socket.emit("livechat:send", { content });
       clearComposer();
       return;
     }
 
-    // Fallback path: same row, same shape, over plain HTTP.
+    // REST path — identical row, identical persistence. The user is told
+    // nothing about transport: from here a message is a message.
     setSending(true);
     try {
-      const res = await fetch(`/api/dm/${encodeURIComponent(userId)}`, {
+      const res = await fetch("/api/livechat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ content }),
@@ -227,11 +225,10 @@ export default function DMPanel() {
       const body: unknown = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setError(readApiError(body, "Message could not be sent."));
+        setError("Message could not be sent. Please try again.");
         return;
       }
-
-      const message = isRecord(body) ? asDmMessage(body.message) : null;
+      const message = isRecord(body) ? asLiveMessage(body.message) : null;
       if (message) mergeMessage(message);
       clearComposer();
     } catch {
@@ -259,51 +256,63 @@ export default function DMPanel() {
     [send],
   );
 
-  /* ----------------------------------------------------------------- render */
+  /* ---------------------------------------------------------------- render */
 
   const canSend = Boolean(userId) && !sending && draft.trim().length > 0;
 
   return (
     <ChatShell
-      title="Direct Message"
-      subtitle={`A private thread between you and the ${STAFF_LABEL} Unit.`}
+      title="Live Chat"
+      subtitle="A private conversation with the Students Affairs Unit."
       badge={
         <span className="badge badge-neutral">
           <span
             className={online ? "pulse-dot" : "pulse-dot-off"}
             aria-hidden="true"
           />
-          {online ? "Live" : "Open"}
+          {status === "connecting" ? "Connecting…" : online ? "Live" : statusLabel(status)}
         </span>
       }
       footer={
-        status === "offline" || status === "idle" ? (
+        error ? (
           <div className="border-t border-line px-5 py-3">
-            <div className="notice" role="status">
-              <span aria-hidden="true">ℹ</span>
-              <span>
-                Messages you send are saved and read by the Unit. Replies will
-                update here shortly.
-              </span>
+            <div className="notice notice-error" role="status" aria-live="polite">
+              <span aria-hidden="true">✕</span>
+              <span className="flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setReloadKey((key) => key + 1);
+                }}
+                className="shrink-0 font-semibold underline underline-offset-2"
+              >
+                Retry
+              </button>
             </div>
           </div>
         ) : undefined
       }
       composer={
-        <form onSubmit={handleSubmit} className="flex items-end gap-2 border-t border-line px-5 py-4">
-          <label htmlFor="dm-composer" className="sr-only">
+        <form
+          onSubmit={handleSubmit}
+          className="flex items-end gap-2 border-t border-line px-5 py-4"
+        >
+          <label htmlFor="livechat-composer" className="sr-only">
             Message the Students Affairs Unit
           </label>
           <textarea
-            id="dm-composer"
+            id="livechat-composer"
             ref={composerRef}
             rows={1}
             value={draft}
             onChange={handleDraftChange}
             onKeyDown={handleKeyDown}
-            maxLength={MAX_DM_LENGTH}
+            maxLength={MAX_CONTENT}
             disabled={!userId}
-            placeholder="Write to the Students Affairs Unit…  (Enter to send, Shift+Enter for a new line)"
+            placeholder={
+              userId ? "Write to the Unit…  (Enter to send)" : "Sign in to chat"
+            }
             className="field max-h-[8.25rem] flex-1 resize-none overflow-y-auto disabled:cursor-not-allowed disabled:opacity-50"
           />
           <NeonButton type="submit" disabled={!canSend} loading={sending}>
@@ -316,17 +325,19 @@ export default function DMPanel() {
         ref={listRef}
         onScroll={handleScroll}
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
-        aria-label="Conversation with Students Affairs"
         role="log"
+        aria-label="Conversation with Students Affairs"
       >
         {loading ? (
           <p className="px-1 py-10 text-center text-sm text-muted">
-            Loading your conversation…
+            Loading the conversation…
           </p>
         ) : messages.length === 0 ? (
           <EmptyState
             title="No messages yet"
-            hint={`Anything you write here goes only to the ${STAFF_LABEL} Unit — never to other students.`}
+            hint={`This is your private line to the ${STAFF_LABEL} Unit. ${
+              pseudonym ? `You appear as ${pseudonym}. ` : ""
+            }Say hello — a real person answers.`}
           />
         ) : (
           <ul className="space-y-3">
@@ -338,8 +349,6 @@ export default function DMPanel() {
                   className={`flex flex-col ${mine ? "items-end" : "items-start"}`}
                 >
                   <p className="mb-1 flex items-center gap-2 text-[0.6875rem]">
-                    {/* Staff carry the thread's only accent, matching the amber
-                        edge on .bubble-staff. */}
                     <span
                       className={
                         mine
@@ -349,7 +358,10 @@ export default function DMPanel() {
                     >
                       {mine ? "You" : STAFF_LABEL}
                     </span>
-                    <time dateTime={message.createdAt} className="text-muted/60">
+                    <time
+                      dateTime={message.createdAt}
+                      className="text-muted/60"
+                    >
                       {timeLabel(message.createdAt)}
                     </time>
                   </p>
@@ -366,25 +378,6 @@ export default function DMPanel() {
           </ul>
         )}
       </div>
-
-      {error && (
-        <div className="border-t border-line px-5 py-3">
-          <div className="notice notice-error" role="status" aria-live="polite">
-            <span aria-hidden="true">✕</span>
-            <span className="flex-1">{error}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setError(null);
-                setReloadKey((key) => key + 1);
-              }}
-              className="shrink-0 font-semibold underline underline-offset-2"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
     </ChatShell>
   );
 }

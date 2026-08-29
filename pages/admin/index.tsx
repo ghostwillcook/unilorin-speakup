@@ -148,7 +148,7 @@ export default function AdminDashboard({ user }: Props) {
       setStats(asStats(body));
     } catch {
       setStats(null);
-      setError("Could not reach the server. Check that `npm run dev` is running.");
+      setError("Could not reach the server. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -207,7 +207,7 @@ export default function AdminDashboard({ user }: Props) {
             title={
               online
                 ? `${presence?.onlineAdmins ?? 0} admin(s) also connected`
-                : "Start the chat server with `npm run socket` to see live presence."
+                : "Live presence appears when the realtime connection is up."
             }
             aria-live="polite"
           >

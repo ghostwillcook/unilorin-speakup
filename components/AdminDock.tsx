@@ -32,7 +32,7 @@ import { signOut, useSession } from "next-auth/react";
  * lg:hidden-style wrapper, mirroring how StudentDock is mounted.
  */
 
-type IconKind = "dashboard" | "complaints" | "messages" | "chat-logs" | "users" | "settings" | "menu";
+type IconKind = "dashboard" | "complaints" | "messages" | "live-chat" | "chat-logs" | "users" | "settings" | "menu";
 
 interface NavItem {
   href: string;
@@ -50,6 +50,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Dashboard", exact: true, icon: "dashboard" },
   { href: "/admin/complaints", label: "Complaints", icon: "complaints" },
+  { href: "/admin/live-chat", label: "Live Chat", icon: "live-chat" },
   { href: "/admin/messages", label: "Messages", icon: "messages" },
   { href: "/admin/chat-logs", label: "Chat Logs", icon: "chat-logs" },
   { href: "/admin/users", label: "Users", icon: "users" },
@@ -273,6 +274,25 @@ function NavIcon({
       <svg {...common}>
         <path d="M20.25 12c0 3.73-3.69 6.75-8.25 6.75a9.7 9.7 0 0 1-2.53-.33L5.25 20.25l1.13-3.2C4.98 15.85 3.75 14.05 3.75 12c0-3.73 3.69-6.75 8.25-6.75s8.25 3.02 8.25 6.75Z" {...stroke} />
         <path d="M8.75 11.25h6.5M8.75 14h4" {...stroke} />
+      </svg>
+    );
+  }
+  if (kind === "live-chat") {
+    // A speech bubble with a lightning hint — "live" rather than "message".
+    const bubble =
+      "M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9l-4.2 3.4c-.5.4-1.3 0-1.3-.6V6.5Z";
+    return active ? (
+      <svg {...common}>
+        <path d={bubble} fill="currentColor" />
+        <path
+          d="m12.4 7.8-2.9 4h2.2l-.6 3 2.9-4h-2.2l.6-3Z"
+          fill="#ffffff"
+        />
+      </svg>
+    ) : (
+      <svg {...common}>
+        <path d={bubble} {...stroke} />
+        <path d="m12.4 7.8-2.9 4h2.2l-.6 3 2.9-4h-2.2l.6-3Z" {...stroke} />
       </svg>
     );
   }

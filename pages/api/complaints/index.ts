@@ -38,6 +38,11 @@ interface StudentComplaint {
   files: string[];
   createdAt: string;
   updatedAt: string;
+  /** Newest thread message, for the My Complaints list preview. Absent on the
+   *  admin list, which reads the thread itself when a complaint is opened. */
+  lastMessage?: { content: string; senderRole: string; createdAt: string } | null;
+  /** Unread replies from the Unit — the list's unread dot (student list only). */
+  unread?: number;
 }
 
 interface Submitter {
@@ -226,12 +231,43 @@ function readFiles(value: unknown, userId: string): FilesResult {
 /* ------------------------------------------------------------------- routes */
 
 async function listOwn(res: NextApiResponse, userId: string): Promise<void> {
-  const rows: ComplaintRow[] = await prisma.complaint.findMany({
+  // The list is the My Complaints inbox, so each row carries its newest thread
+  // message (for the preview) and a filtered count of unread Unit replies (for
+  // the dot). One query, no N+1.
+  const rows = await prisma.complaint.findMany({
     where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: COMPLAINT_FIELDS,
+    orderBy: { updatedAt: "desc" },
+    select: {
+      ...COMPLAINT_FIELDS,
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { content: true, senderRole: true, createdAt: true },
+      },
+      _count: {
+        select: {
+          messages: { where: { senderRole: "ADMIN", readAt: null } },
+        },
+      },
+    },
   });
-  res.status(200).json({ complaints: rows.map(toStudentComplaint) });
+
+  res.status(200).json({
+    complaints: rows.map((row) => {
+      const last = row.messages[0] ?? null;
+      return {
+        ...toStudentComplaint(row),
+        lastMessage: last
+          ? {
+              content: last.content,
+              senderRole: last.senderRole,
+              createdAt: last.createdAt.toISOString(),
+            }
+          : null,
+        unread: row._count.messages,
+      };
+    }),
+  });
 }
 
 async function listAll(

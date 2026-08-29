@@ -170,7 +170,7 @@ export default function AdminSettings({ user }: Props) {
         setSaved(null);
         setSetupHint(null);
         setError(
-          "Could not reach the server. Check that `npm run dev` is running.",
+          "Could not reach the server. Please try again.",
         );
       } finally {
         if (!controller.signal.aborted) setLoading(false);

@@ -170,7 +170,7 @@ export default function AdminUsers({ user }: Props) {
         setLoaded(false);
         setSetupHint(null);
         setError(
-          "Could not reach the server. Check that `npm run dev` is running.",
+          "Could not reach the server. Please try again.",
         );
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -232,7 +232,7 @@ export default function AdminUsers({ user }: Props) {
       );
     } catch {
       setActionError(
-        `Could not reach the server to update ${row.name}. Check that \`npm run dev\` is running.`,
+        `Could not reach the server to update ${row.name}. Please try again.`,
       );
     } finally {
       setPendingId(null);
@@ -336,7 +336,7 @@ export default function AdminUsers({ user }: Props) {
                   ? undefined
                   : q
                     ? "Search runs over name, email and matric number."
-                    : "Run `npm run seed` to create the demo administrator and students."
+                    : "No student accounts exist yet."
             }
           />
         ) : (

@@ -282,7 +282,7 @@ export default function AdminMessages({ user }: Props) {
         setThreadsLoaded(false);
         setSetupHint(null);
         setListError(
-          "Could not reach the server. Check that `npm run dev` is running.",
+          "Could not reach the server. Please try again.",
         );
       } finally {
         if (!controller.signal.aborted) setThreadsLoading(false);
@@ -711,6 +711,8 @@ export default function AdminMessages({ user }: Props) {
         </div>
       )}
 
+      <MessageALookup onFound={(id) => void router.push(`?student=${encodeURIComponent(id)}`)} />
+
       <div className="grid gap-5 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
         {/* Left pane. On small screens the two panes take turns rather than
             stacking, so a thread is never buried under the whole inbox. */}
@@ -895,14 +897,9 @@ export default function AdminMessages({ user }: Props) {
                   <div className="notice mb-3">
                     <span aria-hidden="true">ℹ</span>
                     <span>
-                      Live delivery is off, so new student messages will not pop
-                      in on their own — replies you send are still saved and
-                      delivered. Use Refresh to check, or start the live server
-                      with{" "}
-                      <code className="rounded bg-canvas/85 px-1.5 py-0.5 font-mono text-[0.8125rem] text-accent">
-                        npm run socket
-                      </code>
-                      .
+                      Live updates are briefly unavailable — messages you send
+                      are still saved and delivered. Use Refresh to check for
+                      new messages.
                     </span>
                   </div>
                 )}
@@ -1030,6 +1027,138 @@ function ThreadRow({
         </span>
       </button>
     </li>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* "Message a User" — find a student by anonymous ID or matric number          */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Spec §6: the admin types a handle ("Anonymous #42") or a matric number,
+ * presses Find, and lands in that student's NORMAL DM thread — separate from
+ * complaint conversations and Live Chat.
+ *
+ * Misses show the spec's own copy, never a technical error, because the input
+ * is a human typing from memory. The found user is surfaced as a small
+ * identity chip so the admin can confirm they reached the right person before
+ * the thread opens.
+ */
+function MessageALookup({ onFound }: { onFound: (userId: string) => void }) {
+  const [identifier, setIdentifier] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<
+    | { state: "idle" }
+    | { state: "not-found"; message: string }
+    | {
+        state: "found";
+        user: { id: string; name: string; studentId: string; anonymousId: string | null };
+      }
+  >({ state: "idle" });
+
+  async function find(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const query = identifier.trim();
+    if (!query || busy) return;
+
+    setBusy(true);
+    setResult({ state: "idle" });
+    try {
+      const res = await fetch(
+        `/api/admin/users/lookup?identifier=${encodeURIComponent(query)}`,
+        { headers: { Accept: "application/json" } },
+      );
+      const body: unknown = await res.json().catch(() => null);
+
+      if (res.status === 404) {
+        setResult({
+          state: "not-found",
+          message:
+            readField(body, "error") ??
+            "User not found. Please check the ID or matric number and try again.",
+        });
+        return;
+      }
+      if (!res.ok || !isRecord(body) || !isRecord(body.user)) {
+        setResult({
+          state: "not-found",
+          message: "Something went wrong looking that up. Please try again.",
+        });
+        return;
+      }
+
+      const u = body.user as Record<string, unknown>;
+      const id = typeof u.id === "string" ? u.id : "";
+      const name = typeof u.name === "string" ? u.name : "";
+      const studentId = typeof u.studentId === "string" ? u.studentId : "";
+      const anonymousId = typeof u.anonymousId === "string" ? u.anonymousId : null;
+      if (!id || !name || !studentId) {
+        setResult({
+          state: "not-found",
+          message: "Something went wrong looking that up. Please try again.",
+        });
+        return;
+      }
+
+      setResult({ state: "found", user: { id, name, studentId, anonymousId } });
+    } catch {
+      setResult({
+        state: "not-found",
+        message: "Could not reach the server. Please try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <GlassCard className="mb-5">
+      <PanelHeader
+        title="Message a User"
+        subtitle="Find a student by anonymous ID (from Live Chat) or matric number, and open their direct message thread."
+      />
+      <form className="flex flex-wrap items-end gap-3 px-5 py-4" onSubmit={(e) => void find(e)}>
+        <div className="min-w-0 flex-1">
+          <label className="field-label" htmlFor="lookup-identifier">
+            Anonymous ID or matric number
+          </label>
+          <input
+            id="lookup-identifier"
+            type="text"
+            className="field"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="Anonymous #42 or 19/52HL123"
+            autoComplete="off"
+          />
+        </div>
+        <NeonButton type="submit" loading={busy} disabled={!identifier.trim()}>
+          Find user
+        </NeonButton>
+      </form>
+
+      {result.state === "not-found" && (
+        <p className="px-5 pb-4 text-sm text-warn" role="status">
+          {result.message}
+        </p>
+      )}
+
+      {result.state === "found" && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-3.5">
+          <span className="badge border border-line bg-veil text-graphite">
+            {result.user.name} · {result.user.studentId}
+            {result.user.anonymousId ? ` · ${result.user.anonymousId}` : ""}
+          </span>
+          <NeonButton
+            type="button"
+            className="px-3 py-1.5 text-xs"
+            onClick={() => onFound(result.user.id)}
+          >
+            Open their direct messages
+          </NeonButton>
+        </div>
+      )}
+    </GlassCard>
   );
 }
 

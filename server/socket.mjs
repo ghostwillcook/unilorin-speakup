@@ -20,12 +20,30 @@
  *   in    chat:send             { content }
  *         dm:send               { studentId?, content }
  *         chat:history:request  {}
+ *         complaint:join        { complaintId }
+ *         complaint:send        { complaintId, content }
+ *         livechat:join         { conversationId? }
+ *         livechat:send         { content }
+ *         livechat:reply        { conversationId, content }
  *   out   chat:history          PublicChatMessage[]   last 50, oldest first
  *         chat:message          PublicChatMessage     broadcast to everyone
  *         chat:error            { message }           to the one sender
  *         dm:new                DmMessage             to user:<id> and "admins"
+ *         complaint:new         ComplaintMessage      to complaint:<id>
+ *         livechat:new          LiveMessage           to live:<conversationId>
+ *         livechat:inbox        InboxSummary          to "admins" (unread bump)
  *         presence              { onlineStudents, onlineAdmins }
  *         session               { pseudonym }         on connect
+ *
+ * The three new families are thin realtime skins over REST-backed tables:
+ * ComplaintMessage and LiveMessage. Every socket write is a plain
+ * prisma.*.create — the same rows /api/complaints/[id]/messages and
+ * /api/livechat write — so the database is the source of truth and a socket
+ * that is down only costs the instant echo, never the message. Authorization
+ * is per-room and per-write: joining complaint:<id> requires owning the
+ * complaint or being an admin, and a student's livechat:send can only ever
+ * address their own conversation because the conversation row is looked up BY
+ * their user id, never by a client-supplied conversation id.
  *
  * PublicChatMessage carries no userId, ever. That is enforced here by the
  * `select` on every ChatMessage query rather than by remembering to strip a
@@ -127,6 +145,8 @@ const MAX_CHAT_LENGTH = 2000;
 /** Matches MAX_CONTENT in pages/api/dm/[studentId].ts: both paths write the
  *  same rows, so they must accept the same input. */
 const MAX_DM_LENGTH = 4000;
+/** Matches the REST routes for complaint threads and Live Chat. */
+const MAX_THREAD_LENGTH = 4000;
 const RATE_WINDOW_MS = 60_000;
 const SETTINGS_TTL_MS = 5_000;
 /** Admins are never anonymised in the global room — see connection handler. */
@@ -645,6 +665,280 @@ async function handleDmSend(socket, payload) {
   }
 }
 
+/* ------------------------------------------------- complaint thread events */
+
+const COMPLAINT_MESSAGE_FIELDS = {
+  id: true,
+  complaintId: true,
+  senderRole: true,
+  content: true,
+  createdAt: true,
+};
+
+function toComplaintMessage(row) {
+  return {
+    id: row.id,
+    complaintId: row.complaintId,
+    senderRole: row.senderRole,
+    content: row.content,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Authorizes a complaint for this socket's user. Admins may open any thread;
+ * a student only their own. Returns the complaint row or null — the caller
+ * turns null into a quiet refusal, because "not yours" and "does not exist"
+ * must not be distinguishable to a probing client.
+ */
+async function complaintForUser(user, complaintId) {
+  if (typeof complaintId !== "string" || complaintId.trim().length === 0) {
+    return null;
+  }
+  const where =
+    user.role === "ADMIN"
+      ? { id: complaintId }
+      : { id: complaintId, userId: user.id };
+  return prisma.complaint.findFirst({
+    where,
+    select: { id: true },
+  });
+}
+
+async function handleComplaintJoin(socket, payload) {
+  const user = socket.data.user;
+  try {
+    const complaintId =
+      payload && typeof payload === "object" ? payload.complaintId : undefined;
+    const complaint = await complaintForUser(user, complaintId);
+    if (!complaint) {
+      socket.emit("chat:error", { message: "Conversation not available." });
+      return;
+    }
+    // join() is idempotent, so re-joining on every panel mount is free.
+    await socket.join(`complaint:${complaint.id}`);
+  } catch (error) {
+    console.error("[socket] complaint:join failed:", errText(error));
+  }
+}
+
+async function handleComplaintSend(socket, payload) {
+  const user = socket.data.user;
+  try {
+    const complaintId =
+      payload && typeof payload === "object" ? payload.complaintId : undefined;
+    const content = readContent(payload);
+    if (content === null) {
+      socket.emit("chat:error", { message: "Message cannot be empty." });
+      return;
+    }
+    if (content.length > MAX_THREAD_LENGTH) {
+      socket.emit("chat:error", {
+        message: `Message must be ${MAX_THREAD_LENGTH} characters or fewer.`,
+      });
+      return;
+    }
+
+    const complaint = await complaintForUser(user, complaintId);
+    if (!complaint) {
+      socket.emit("chat:error", { message: "Conversation not available." });
+      return;
+    }
+
+    const row = await prisma.complaintMessage.create({
+      data: {
+        complaintId: complaint.id,
+        senderId: user.id,
+        senderRole: user.role,
+        content,
+      },
+      select: COMPLAINT_MESSAGE_FIELDS,
+    });
+    await prisma.complaint.update({
+      where: { id: complaint.id },
+      data: { updatedAt: new Date() },
+    });
+
+    // The sender is in the room too and merges by id, so no separate echo.
+    io.to(`complaint:${complaint.id}`).emit("complaint:new", toComplaintMessage(row));
+  } catch (error) {
+    console.error("[socket] complaint:send failed:", errText(error));
+    socket.emit("chat:error", {
+      message: "Message could not be delivered. Please try again.",
+    });
+  }
+}
+
+/* ------------------------------------------------------ live chat events */
+
+const LIVE_MESSAGE_FIELDS = {
+  id: true,
+  conversationId: true,
+  senderRole: true,
+  content: true,
+  createdAt: true,
+};
+
+function toLiveMessage(row) {
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    senderRole: row.senderRole,
+    content: row.content,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** Creates the student's conversation if this is their first touch — the
+ *  socket twin of ensureConversation in /api/livechat. */
+async function ensureLiveConversation(userId) {
+  const existing = await prisma.liveConversation.findUnique({
+    where: { userId },
+    select: { id: true, pseudonym: true, status: true },
+  });
+  if (existing) return existing;
+  return prisma.liveConversation.create({
+    data: { userId, pseudonym: `Anonymous #${10 + Math.floor(Math.random() * 990)}` },
+    select: { id: true, pseudonym: true, status: true },
+  });
+}
+
+async function handleLivechatJoin(socket, payload) {
+  const user = socket.data.user;
+  try {
+    if (user.role === "ADMIN") {
+      // An admin joins a specific conversation's room when they open it.
+      const id =
+        payload && typeof payload === "object" ? payload.conversationId : undefined;
+      if (typeof id !== "string" || id.trim().length === 0) return;
+      const conversation = await prisma.liveConversation.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (conversation) await socket.join(`live:${conversation.id}`);
+      return;
+    }
+
+    // A student joins their own conversation — resolved BY their user id, so
+    // a crafted payload has no conversation to point at.
+    const conversation = await ensureLiveConversation(user.id);
+    await socket.join(`live:${conversation.id}`);
+    socket.emit("livechat:conversation", {
+      id: conversation.id,
+      pseudonym: conversation.pseudonym,
+      status: conversation.status,
+    });
+  } catch (error) {
+    console.error("[socket] livechat:join failed:", errText(error));
+  }
+}
+
+async function handleLivechatSend(socket, payload) {
+  const user = socket.data.user;
+  try {
+    const content = readContent(payload);
+    if (content === null) {
+      socket.emit("chat:error", { message: "Message cannot be empty." });
+      return;
+    }
+    if (content.length > MAX_THREAD_LENGTH) {
+      socket.emit("chat:error", {
+        message: `Message must be ${MAX_THREAD_LENGTH} characters or fewer.`,
+      });
+      return;
+    }
+
+    const conversation = await ensureLiveConversation(user.id);
+    if (conversation.status === "CLOSED") {
+      await prisma.liveConversation.update({
+        where: { id: conversation.id },
+        data: { status: "OPEN" },
+      });
+    }
+
+    const row = await prisma.liveMessage.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: user.id,
+        senderRole: "STUDENT",
+        content,
+      },
+      select: LIVE_MESSAGE_FIELDS,
+    });
+    await prisma.liveConversation.update({
+      where: { id: conversation.id },
+      data: { adminUnread: { increment: 1 }, updatedAt: new Date() },
+    });
+
+    const message = toLiveMessage(row);
+    io.to(`live:${conversation.id}`).emit("livechat:new", message);
+    // The inbox bump lets every connected admin's badge move without a
+    // refetch; admins not in the room still catch up over REST on open.
+    io.to("admins").emit("livechat:inbox", {
+      conversationId: conversation.id,
+      lastMessage: message,
+    });
+  } catch (error) {
+    console.error("[socket] livechat:send failed:", errText(error));
+    socket.emit("chat:error", {
+      message: "Message could not be delivered. Please try again.",
+    });
+  }
+}
+
+async function handleLivechatReply(socket, payload) {
+  const user = socket.data.user;
+  try {
+    const conversationId =
+      payload && typeof payload === "object" ? payload.conversationId : undefined;
+    const content = readContent(payload);
+    if (content === null) {
+      socket.emit("chat:error", { message: "Message cannot be empty." });
+      return;
+    }
+    if (content.length > MAX_THREAD_LENGTH) {
+      socket.emit("chat:error", {
+        message: `Message must be ${MAX_THREAD_LENGTH} characters or fewer.`,
+      });
+      return;
+    }
+    if (user.role !== "ADMIN" || typeof conversationId !== "string") {
+      socket.emit("chat:error", { message: "Conversation not available." });
+      return;
+    }
+
+    const conversation = await prisma.liveConversation.findUnique({
+      where: { id: conversationId },
+      select: { id: true },
+    });
+    if (!conversation) {
+      socket.emit("chat:error", { message: "Conversation not available." });
+      return;
+    }
+
+    const row = await prisma.liveMessage.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: user.id,
+        senderRole: "ADMIN",
+        content,
+      },
+      select: LIVE_MESSAGE_FIELDS,
+    });
+    await prisma.liveConversation.update({
+      where: { id: conversation.id },
+      data: { userUnread: { increment: 1 }, updatedAt: new Date() },
+    });
+
+    io.to(`live:${conversation.id}`).emit("livechat:new", toLiveMessage(row));
+  } catch (error) {
+    console.error("[socket] livechat:reply failed:", errText(error));
+    socket.emit("chat:error", {
+      message: "Message could not be delivered. Please try again.",
+    });
+  }
+}
+
 /* ---------------------------------------------------------------- connection */
 
 io.on("connection", (socket) => {
@@ -671,6 +965,21 @@ io.on("connection", (socket) => {
   });
   socket.on("dm:send", (payload) => {
     void handleDmSend(socket, payload);
+  });
+  socket.on("complaint:join", (payload) => {
+    void handleComplaintJoin(socket, payload);
+  });
+  socket.on("complaint:send", (payload) => {
+    void handleComplaintSend(socket, payload);
+  });
+  socket.on("livechat:join", (payload) => {
+    void handleLivechatJoin(socket, payload);
+  });
+  socket.on("livechat:send", (payload) => {
+    void handleLivechatSend(socket, payload);
+  });
+  socket.on("livechat:reply", (payload) => {
+    void handleLivechatReply(socket, payload);
   });
 
   // A transport-level error must not take the process with it.

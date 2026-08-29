@@ -23,7 +23,8 @@ interface UploadTicket {
 export default function ComplaintForm({
   onSubmitted,
 }: {
-  onSubmitted: () => void;
+  /** Receives the new complaint's id so the caller can offer to open it. */
+  onSubmitted: (complaintId: string) => void;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -140,12 +141,14 @@ export default function ComplaintForm({
         throw new Error(body.error ?? "Could not submit your complaint.");
       }
 
+      const body = (await res.json()) as { complaint?: { id?: string } };
+
       setTitle("");
       setDescription("");
       setFiles([]);
       if (fileInput.current) fileInput.current.value = "";
-      setNotice("Your complaint has been submitted to the Students Affairs Unit.");
-      onSubmitted();
+      setNotice("Your complaint has been submitted and is now pending review.");
+      onSubmitted(body.complaint?.id ?? "");
     } catch (err) {
       setErrors({
         form: err instanceof Error ? err.message : "Something went wrong.",

@@ -182,7 +182,7 @@ export default function AdminChatLogs({ user }: Props) {
         setLoaded(false);
         setSetupHint(null);
         setError(
-          "Could not reach the server. Check that `npm run dev` is running.",
+          "Could not reach the server. Please try again.",
         );
       } finally {
         if (!controller.signal.aborted) setLoading(false);

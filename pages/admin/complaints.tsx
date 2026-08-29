@@ -4,6 +4,7 @@ import type { GetServerSideProps } from "next";
 
 import AdminLayout from "@/components/AdminLayout";
 import GlassCard, { EmptyState, PanelHeader } from "@/components/GlassCard";
+import ComplaintThread from "@/components/ComplaintThread";
 import NeonButton from "@/components/NeonButton";
 import StatusBadge, { STATUSES } from "@/components/StatusBadge";
 import type { ComplaintStatus } from "@/components/StatusBadge";
@@ -35,10 +36,6 @@ import { dateTimeLabel } from "@/lib/pseudonym";
  *    filter stays on screen, so the admin sees the outcome of their click rather
  *    than the row silently vanishing.
  */
-
-/** Matches MAX_REPLY in pages/api/complaints/[id].ts, so the cap is felt in the
- *  textarea instead of coming back as a 400. */
-const MAX_REPLY = 5000;
 
 /** Long enough to feel instant, short enough that a word costs one request. */
 const DEBOUNCE_MS = 300;
@@ -277,7 +274,7 @@ export default function AdminComplaintsPage({ user }: Props) {
         if (!active || isAbort(err)) return;
         setComplaints(null);
         setError(
-          "Could not reach the server. Check that `npm run dev` is running.",
+          "Could not reach the server. Please try again.",
         );
       } finally {
         if (active) setLoading(false);
@@ -298,12 +295,9 @@ export default function AdminComplaintsPage({ user }: Props) {
         setSelectedId(null);
         return;
       }
-      // Seed on open rather than in an effect: the draft is a copy of the row at
-      // the moment the admin started editing it.
-      setDraft({
-        reply: complaint.adminReply ?? "",
-        status: complaint.status,
-      });
+      // Seed the status select from the row as it is the moment the admin
+      // opened it; the reply itself lives in the thread, not a draft.
+      setDraft({ reply: "", status: complaint.status });
       setSelectedId(complaint.id);
     },
     [selectedId],
@@ -563,9 +557,8 @@ export default function AdminComplaintsPage({ user }: Props) {
             const expanded = selectedId === complaint.id;
             const busy = busyId === complaint.id;
             const failed = rowError?.id === complaint.id ? rowError : null;
-            const dirty =
-              draft.reply.trim() !== (complaint.adminReply ?? "") ||
-              draft.status !== complaint.status;
+            // Status-only: the reply is the thread's business now.
+            const dirty = draft.status !== complaint.status;
 
             return (
               <GlassCard as="li" key={complaint.id} hover>
@@ -687,11 +680,7 @@ export default function AdminComplaintsPage({ user }: Props) {
                       aria-controls={`composer-${complaint.id}`}
                       onClick={() => openRow(complaint)}
                     >
-                      {expanded
-                        ? "Close"
-                        : complaint.adminReply
-                          ? "Edit reply"
-                          : "Reply"}
+                      {expanded ? "Close thread" : "Open thread"}
                     </NeonButton>
                   </div>
 
@@ -709,27 +698,12 @@ export default function AdminComplaintsPage({ user }: Props) {
                       id={`composer-${complaint.id}`}
                       className="mt-4 border-t border-line pt-4"
                     >
-                      <label
-                        className="field-label"
-                        htmlFor={`reply-${complaint.id}`}
-                      >
-                        Reply to {complaint.user.name}
-                      </label>
-                      <textarea
-                        id={`reply-${complaint.id}`}
-                        className="textarea"
-                        value={draft.reply}
-                        maxLength={MAX_REPLY}
-                        placeholder="Explain what the office has done or will do about this…"
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            reply: event.target.value,
-                          }))
-                        }
-                      />
-
-                      <div className="mt-3 flex flex-wrap items-end gap-x-4 gap-y-3">
+                      {/* Status control stays on the record; the REPLY now
+                          lives in the dedicated thread below, where the
+                          student sees it arrive in their own complaint
+                          conversation (spec: tap complaint → details + thread
+                          → reply). */}
+                      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
                         <div className="w-full sm:w-44">
                           <label
                             className="field-label"
@@ -756,42 +730,32 @@ export default function AdminComplaintsPage({ user }: Props) {
                           </select>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <NeonButton
-                            type="button"
-                            loading={busy}
-                            disabled={!dirty}
-                            title={dirty ? undefined : "No changes to save"}
-                            onClick={() =>
-                              void save(complaint.id, {
-                                adminReply: draft.reply,
-                                status: draft.status,
-                              })
-                            }
-                          >
-                            {busy ? "Saving…" : "Save"}
-                          </NeonButton>
-                          <NeonButton
-                            type="button"
-                            variant="ghost"
-                            disabled={busy}
-                            onClick={() => setSelectedId(null)}
-                          >
-                            Cancel
-                          </NeonButton>
-                        </div>
+                        <NeonButton
+                          type="button"
+                          loading={busy}
+                          disabled={!dirty}
+                          title={dirty ? undefined : "No changes to save"}
+                          onClick={() =>
+                            void save(complaint.id, { status: draft.status })
+                          }
+                        >
+                          {busy ? "Saving…" : "Save status"}
+                        </NeonButton>
 
                         <p className="ml-auto text-xs text-muted">
-                          {draft.reply.length.toLocaleString()}/
-                          {MAX_REPLY.toLocaleString()}
+                          Last updated {dateTimeLabel(complaint.updatedAt)} ·
+                          reviewed by {user.name}.
                         </p>
                       </div>
 
-                      <p className="mt-3 text-xs text-muted">
-                        Sending an empty reply clears it. Last updated{" "}
-                        {dateTimeLabel(complaint.updatedAt)} · reviewed by{" "}
-                        {user.name}.
-                      </p>
+                      <div className="mt-4">
+                        <ComplaintThread
+                          complaintId={complaint.id}
+                          viewerRole="ADMIN"
+                          title={`Conversation with ${complaint.user.name}`}
+                          subtitle={`${complaint.user.studentId} · this complaint's thread`}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
