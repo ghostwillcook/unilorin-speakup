@@ -754,6 +754,15 @@ export default function AdminComplaintsPage({ user }: Props) {
                           viewerRole="ADMIN"
                           title={`Conversation with ${complaint.user.name}`}
                           subtitle={`${complaint.user.studentId} · this complaint's thread`}
+                          // The student's messages carry HER name — only the
+                          // Unit's replies are labeled Student Affairs.
+                          otherLabel={complaint.user.name}
+                          // Below md, ChatShell goes fixed full-screen. Without
+                          // a way back, "Open thread" on a phone traps the
+                          // admin behind the sheet with only a reload to
+                          // escape — so collapse the row (same as the desktop
+                          // "Close thread" button above) on back.
+                          onBack={() => setSelectedId(null)}
                         />
                       </div>
                     </div>

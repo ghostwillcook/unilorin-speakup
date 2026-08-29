@@ -49,7 +49,7 @@ interface ThreadMessage {
   createdAt: string;
 }
 
-const STAFF_LABEL = "Students Affairs";
+const STAFF_LABEL = "Student Affairs";
 const STATUS_VALUES = ["OPEN", "WAITING", "CLOSED"] as const;
 type LiveStatus = (typeof STATUS_VALUES)[number];
 
@@ -139,6 +139,12 @@ export default function AdminLiveChatPage({ user }: { user: SessionUser }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const nearBottom = useRef(true);
+  /**
+   * The reply text most recently handed to the socket, kept so a chat:error
+   * can put it back in the composer if the server rejects it. Cleared when
+   * the livechat:new echo of that reply confirms it was persisted.
+   */
+  const lastReplyRef = useRef<string | null>(null);
 
   const online = status === "online";
   const selected = inbox.find((c) => c.id === selectedId) ?? null;
@@ -210,6 +216,16 @@ export default function AdminLiveChatPage({ user }: { user: SessionUser }) {
         }
         parsed.sort(byTime);
         setMessages(parsed);
+
+        // This GET is the read receipt — it clears the conversation's
+        // adminUnread server-side — so the badge is zeroed locally at the
+        // same moment rather than lingering until some unrelated inbox
+        // refresh happens to run. Doing it on success (not on selection)
+        // keeps a failed load from dismissing a badge for messages nobody
+        // actually read.
+        setInbox((prev) =>
+          prev.map((c) => (c.id === selectedId ? { ...c, adminUnread: 0 } : c)),
+        );
       } catch {
         if (active) setThreadError("Could not reach the server.");
       } finally {
@@ -245,6 +261,11 @@ export default function AdminLiveChatPage({ user }: { user: SessionUser }) {
       if (!message) return;
       if (message.conversationId === selectedIdRef.current) {
         mergeMessage(message);
+        // The echo of the Unit's own reply is the proof it was persisted,
+        // so the text stashed for chat:error recovery is spent.
+        if (message.senderRole === "ADMIN") {
+          lastReplyRef.current = null;
+        }
       }
     }
 
@@ -254,8 +275,48 @@ export default function AdminLiveChatPage({ user }: { user: SessionUser }) {
       void loadInbox();
     }
 
+    /**
+     * The reply path over the socket is fire-and-forget: failures come back
+     * as chat:error, and without this listener a rejected reply would simply
+     * vanish — the draft is cleared on emit, so the admin loses both the
+     * message and the text. Surface the reason through the shell's error
+     * notice and hand the lost text back to the composer, but only if it is
+     * empty — a reply already being retyped must never be overwritten by the
+     * one that failed.
+     */
+    function handleChatError(payload: unknown): void {
+      const reason =
+        isRecord(payload) &&
+        typeof payload.message === "string" &&
+        payload.message.trim()
+          ? payload.message
+          : null;
+      setThreadError(reason ?? "Message could not be sent. Please try again.");
+      const lost = lastReplyRef.current;
+      lastReplyRef.current = null;
+      if (lost) {
+        setDraft((current) => (current.trim() ? current : lost));
+      }
+    }
+
+    // After a reconnect the server holds a fresh socket with no room
+    // memberships: without re-joining live:<id> here the open thread would
+    // silently stop receiving while livechat:inbox — broadcast to the
+    // "admins" room, which the connection handler re-joins automatically —
+    // still bumps the list. join() is idempotent, so this is free.
+    function handleReconnect(): void {
+      // The guard above narrowed `socket`, but that narrowing does not follow
+      // into a nested function body, so re-bind it as non-nullable here.
+      const live = socket;
+      if (live && selectedIdRef.current) {
+        live.emit("livechat:join", { conversationId: selectedIdRef.current });
+      }
+    }
+
     socket.on("livechat:new", handleNew);
     socket.on("livechat:inbox", handleInbox);
+    socket.on("chat:error", handleChatError);
+    socket.on("connect", handleReconnect);
 
     if (selectedIdRef.current) {
       socket.emit("livechat:join", { conversationId: selectedIdRef.current });
@@ -264,6 +325,8 @@ export default function AdminLiveChatPage({ user }: { user: SessionUser }) {
     return () => {
       socket.off("livechat:new", handleNew);
       socket.off("livechat:inbox", handleInbox);
+      socket.off("chat:error", handleChatError);
+      socket.off("connect", handleReconnect);
     };
   }, [loadInbox, mergeMessage, socket]);
 
@@ -312,6 +375,11 @@ export default function AdminLiveChatPage({ user }: { user: SessionUser }) {
 
     if (socket && online) {
       socket.emit("livechat:reply", { conversationId: selectedId, content });
+      // Stash what was handed over: the emit has no return value, so a
+      // chat:error is the only signal the reply was rejected — and only this
+      // ref still holds the text to put back. Spent when the livechat:new
+      // echo confirms the row was written.
+      lastReplyRef.current = content;
       setDraft("");
       const el = composerRef.current;
       if (el) el.style.height = "auto";

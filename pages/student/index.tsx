@@ -65,7 +65,7 @@ const SECTIONS: Array<{
 const DOCK_TABS = [
   { key: "complaints", label: "Complaints", icon: "complaint" as const },
   { key: "chat", label: "Live Chat", icon: "chat" as const },
-  { key: "room", label: "Room", icon: "dm" as const },
+  { key: "room", label: "Room", icon: "room" as const },
 ];
 
 export default function StudentDashboard({ user }: { user: SessionUser }) {
@@ -118,7 +118,11 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
   }, []);
 
   const activeIndex = SECTIONS.findIndex((s) => s.key === section);
-  const slideKey = section + (section === "complaints" && selectedId ? ":detail" : "");
+  // The slide key folds in the selected complaint id too: tapping a toast (or
+  // any other path) to open a different complaint while a detail is already
+  // open must remount ComplaintThread, not reuse it with stale state.
+  const slideKey =
+    section + (section === "complaints" && selectedId ? `:detail:${selectedId}` : "");
 
   return (
     <>
@@ -246,10 +250,13 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
 
         {/* Submission confirmation: a card above the dock, tap to open the
             new thread, dismiss to keep going. Non-blocking by construction —
-            it overlays nothing interactive and times itself out. */}
+            it times itself out. z-10 keeps it below the mobile full-screen
+            chat shells (z-20) and the dock, so it can never float over a chat
+            composer or swallow a tap meant for one, while still sitting above
+            normal page content. */}
         {toast && (
           <div
-            className="wl-scope fixed inset-x-4 z-40 md:inset-x-auto md:left-1/2 md:w-[26rem] md:-translate-x-1/2"
+            className="wl-scope fixed inset-x-4 z-10 md:inset-x-auto md:left-1/2 md:w-[26rem] md:-translate-x-1/2"
             style={{ bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}
             role="status"
           >

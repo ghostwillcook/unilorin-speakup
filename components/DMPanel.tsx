@@ -10,7 +10,7 @@ import { useSocket } from "@/lib/socket-client";
 import type { DmMessage } from "@/lib/socket-client";
 
 /**
- * The student's private thread with the Students Affairs Unit.
+ * The student's private thread with the Student Affairs Unit.
  *
  * Deliberately dual-path: the socket server carries live delivery, but it is a
  * separate process that may simply not be running (or cold-starting), and a
@@ -27,7 +27,7 @@ const MAX_DM_LENGTH = 4000;
 const NEAR_BOTTOM_PX = 96;
 const COMPOSER_MAX_PX = 132;
 
-const STAFF_LABEL = "Students Affairs";
+const STAFF_LABEL = "Student Affairs";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -57,6 +57,22 @@ function readApiError(value: unknown, fallback: string): string {
     return value.error;
   }
   return fallback;
+}
+
+/**
+ * chat:error payloads carry { message } (see server/socket.mjs) — a different
+ * field from REST's { error }, hence a second reader; anything malformed
+ * falls back to calm copy rather than rendering "undefined".
+ */
+function readErrorMessage(value: unknown): string {
+  if (
+    isRecord(value) &&
+    typeof value.message === "string" &&
+    value.message.trim()
+  ) {
+    return value.message;
+  }
+  return "Message could not be delivered. Please try again.";
 }
 
 /** ISO timestamps sort lexicographically, so id only breaks exact ties. */
@@ -155,10 +171,25 @@ export default function DMPanel() {
       mergeMessage(message);
     }
 
-    socket.on("dm:new", handleDmNew);
+    // A socket send clears the composer optimistically; if the server rejects
+    // it (empty, over-length, rate-limited) this is the ONLY channel through
+    // which the failure surfaces — without it the message would just vanish.
+    function handleChatError(payload: unknown): void {
+      setError(readErrorMessage(payload));
+    }
 
+    socket.on("dm:new", handleDmNew);
+    socket.on("chat:error", handleChatError);
+
+    // Deliberately NO "connect" re-join here, unlike ComplaintThread and
+    // LiveChatPanel: those rooms are joined only in response to a client
+    // emit, which a reconnect silently discards. This panel's dm:new room
+    // (user:<id>, plus "admins" for staff) is re-joined by the SERVER in its
+    // own connection handler on every reconnect, so the client has nothing
+    // to re-announce.
     return () => {
       socket.off("dm:new", handleDmNew);
+      socket.off("chat:error", handleChatError);
     };
   }, [mergeMessage, socket, userId]);
 
@@ -292,7 +323,7 @@ export default function DMPanel() {
       composer={
         <form onSubmit={handleSubmit} className="flex items-end gap-2 border-t border-line px-5 py-4">
           <label htmlFor="dm-composer" className="sr-only">
-            Message the Students Affairs Unit
+            Message the Student Affairs Unit
           </label>
           <textarea
             id="dm-composer"
@@ -303,7 +334,7 @@ export default function DMPanel() {
             onKeyDown={handleKeyDown}
             maxLength={MAX_DM_LENGTH}
             disabled={!userId}
-            placeholder="Write to the Students Affairs Unit…  (Enter to send, Shift+Enter for a new line)"
+            placeholder="Write to the Student Affairs Unit…  (Enter to send, Shift+Enter for a new line)"
             className="field max-h-[8.25rem] flex-1 resize-none overflow-y-auto disabled:cursor-not-allowed disabled:opacity-50"
           />
           <NeonButton type="submit" disabled={!canSend} loading={sending}>
@@ -316,7 +347,7 @@ export default function DMPanel() {
         ref={listRef}
         onScroll={handleScroll}
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
-        aria-label="Conversation with Students Affairs"
+        aria-label="Conversation with Student Affairs"
         role="log"
       >
         {loading ? (

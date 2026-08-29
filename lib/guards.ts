@@ -90,14 +90,16 @@ export async function guarded(
   try {
     await fn();
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected server error.";
     // Server-side diagnostics: the swallowed throw still has to land somewhere
-    // a maintainer can read. (Was an eslint-disable for no-console, but
-    // eslint-config-next never enables that rule, so the directive was inert
-    // and ESLint reported it as unused.)
+    // a maintainer can read. The client gets calm copy instead — an err.message
+    // here can be a Prisma error naming tables and columns, and schema detail
+    // is not something to hand every signed-in user.
     console.error("[speakup:api]", err);
-    if (!res.headersSent) res.status(500).json({ error: message });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json({ error: "Something went wrong. Please try again." });
+    }
   }
 }
 

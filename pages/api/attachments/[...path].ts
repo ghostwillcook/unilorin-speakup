@@ -15,7 +15,7 @@ import {
  * The bucket is private, so this route is the only way to read an attachment.
  * Authorization is by namespace: `storageKeyFor` prefixes every upload with the
  * owner's user id, so a student may read anything under `<their id>/` and
- * nothing else, while the Students Affairs Unit may read any attachment in
+ * nothing else, while the Student Affairs Unit may read any attachment in
  * order to assess the complaint it belongs to.
  *
  * Deliberately no requireDb: ownership is provable from the key and the session

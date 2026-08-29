@@ -6,6 +6,7 @@ import {
   requireDb,
   requireRole,
 } from "@/lib/guards";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET  /api/livechat — the caller's own Live Chat conversation (created on
@@ -72,9 +73,26 @@ function readContent(body: Record<string, unknown>): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** The stable "Anonymous #N" handle for this student's conversation. Chosen
- *  once, at creation, so the inbox and logs always agree on who is who. */
-function pickPseudonym(): string {
+/**
+ * The stable "Anonymous #N" handle for this student's conversation. Chosen
+ * once, at creation, so the inbox and logs always agree on who is who.
+ *
+ * Uniqueness is checked against the DB rather than left to luck: the handle
+ * is what admins resolve lookups by, so two students sharing one would make
+ * "Message a User" deliver to the wrong person. Ten attempts over 990 slots
+ * keeps the collision odds near zero at any realistic scale; past that, a
+ * duplicate beats a hang (mirrors pickLivePseudonym in server/socket.mjs —
+ * keep the two behaviourally identical).
+ */
+async function pickPseudonym(): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = `Anonymous #${10 + Math.floor(Math.random() * 990)}`;
+    const taken = await prisma.liveConversation.findFirst({
+      where: { pseudonym: candidate },
+      select: { id: true },
+    });
+    if (!taken) return candidate;
+  }
   return `Anonymous #${10 + Math.floor(Math.random() * 990)}`;
 }
 
@@ -87,7 +105,7 @@ async function ensureConversation(userId: string) {
   return prisma.liveConversation.upsert({
     where: { userId },
     update: {},
-    create: { userId, pseudonym: pickPseudonym() },
+    create: { userId, pseudonym: await pickPseudonym() },
     select: { id: true, pseudonym: true, status: true, createdAt: true },
   });
 }
@@ -154,6 +172,16 @@ export default async function handler(
           .json({ error: `Message must be ${MAX_CONTENT} characters or fewer.` });
         return;
       }
+
+      // Same allowance as the socket twin of this write path.
+      const verdict = checkRateLimit(caller.id);
+      if (!verdict.ok) {
+        res.status(429).json({
+          error: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
+        });
+        return;
+      }
+
       if (conversation.status === "CLOSED") {
         // A closed conversation is re-opened by the student writing again —
         // the natural gesture, rather than a separate "reopen" button nobody

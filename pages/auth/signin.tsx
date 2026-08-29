@@ -39,7 +39,7 @@ function noticeFor(raw: string): Notice {
   if (lower.includes("deactivat")) {
     return {
       message: "This account has been deactivated.",
-      hint: "Contact the Students Affairs Unit if you believe this is a mistake.",
+      hint: "Contact the Student Affairs Unit if you believe this is a mistake.",
     };
   }
   if (lower.includes("database")) {
@@ -61,7 +61,7 @@ function noticeFor(raw: string): Notice {
     case "configuration":
       return {
         message: "Sign-in is misconfigured on the server.",
-        hint: "Please contact the Students Affairs Unit.",
+        hint: "Please contact the Student Affairs Unit.",
       };
     default:
       // A thrown message reads as a sentence and is worth showing verbatim;
@@ -339,7 +339,7 @@ export default function SignInPage() {
             </form>
 
             <p className="mt-6 border-t border-[var(--wl-rule)] pt-5 text-center text-xs leading-relaxed text-[var(--wl-slate)]">
-              Accounts are issued by the Students Affairs Unit. Your name is
+              Accounts are issued by the Student Affairs Unit. Your name is
               never shown to other students in the live chat.
             </p>
           </div>

@@ -13,7 +13,7 @@ import { statusLabel, useSocket } from "@/lib/socket-client";
 import type { DmMessage } from "@/lib/socket-client";
 
 /**
- * The Students Affairs Unit's direct-message inbox.
+ * The Student Affairs Unit's direct-message inbox.
  *
  * Two panes: derived threads on the left, the open conversation on the right.
  * Threads are not rows in the schema — /api/dm folds messages down per student —
@@ -41,7 +41,7 @@ const PREVIEW_CHARS = 120;
 const NEAR_BOTTOM_PX = 96;
 const COMPOSER_MAX_PX = 132;
 
-const STAFF_LABEL = "Students Affairs";
+const STAFF_LABEL = "Student Affairs";
 
 interface DmThread {
   /** User.id of the thread owner. */
@@ -63,6 +63,15 @@ interface ThreadMessage extends DmMessage {
 
 interface Props {
   user: SessionUser;
+}
+
+/** A student found through the "Message a User" lookup. */
+interface LookedUpUser {
+  id: string;
+  name: string;
+  /** Matriculation number, i.e. User.studentId. */
+  studentId: string;
+  anonymousId: string | null;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -215,6 +224,14 @@ export default function AdminMessages({ user }: Props) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  /**
+   * The last student the "Message a User" lookup successfully found. Opening
+   * that student when they have no DM thread yet means `threads` has no row to
+   * hang a header on — the looked-up identity fills in until a thread exists
+   * server-side (which the first reply below creates).
+   */
+  const [lookedUp, setLookedUp] = useState<LookedUpUser | null>(null);
+
   const listRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const nearBottom = useRef(true);
@@ -244,6 +261,14 @@ export default function AdminMessages({ user }: Props) {
     () => threads.find((row) => row.studentId === selectedId) ?? null,
     [selectedId, threads],
   );
+
+  /**
+   * The looked-up identity, but only when it is the student actually open.
+   * A stale lookup from a previous search must never label someone else's
+   * thread, so this is null unless the ids line up.
+   */
+  const lookupForSelection =
+    lookedUp && lookedUp.id === selectedId ? lookedUp : null;
 
   /* ------------------------------------------------------------------ inbox */
 
@@ -615,7 +640,25 @@ export default function AdminMessages({ user }: Props) {
           const index = current.findIndex(
             (row) => row.studentId === message.studentId,
           );
-          if (index === -1) return current;
+          // First contact with a looked-up student: no thread row exists yet,
+          // so synthesize one — mirroring what the dm:new handler does — or
+          // the reply persists but the conversation stays unreachable from
+          // the inbox. Identity comes from the lookup; email fills in on the
+          // next inbox load.
+          if (index === -1) {
+            const info =
+              lookedUp && lookedUp.id === message.studentId ? lookedUp : null;
+            const created: DmThread = {
+              studentId: message.studentId,
+              studentName: info?.name ?? "Unnamed student",
+              studentEmail: "",
+              studentNumber: info?.studentId ?? "",
+              lastMessage: message.content,
+              lastAt: message.createdAt,
+              unread: 0,
+            };
+            return [created, ...current].sort(byRecency);
+          }
           const next: DmThread = {
             ...current[index],
             lastMessage: message.content,
@@ -641,7 +684,7 @@ export default function AdminMessages({ user }: Props) {
     } finally {
       setSending(false);
     }
-  }, [clearComposer, draft, online, selectedId, sending, socket]);
+  }, [clearComposer, draft, lookedUp, online, selectedId, sending, socket]);
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -711,7 +754,21 @@ export default function AdminMessages({ user }: Props) {
         </div>
       )}
 
-      <MessageALookup onFound={(id) => void router.push(`?student=${encodeURIComponent(id)}`)} />
+      <MessageALookup
+        onFound={(found) => {
+          // Remember the identity: it stands in for the thread row that does
+          // not exist yet (header above, synthesized row on first reply).
+          setLookedUp(found);
+          // Route exactly like `select` — shallow, so the panes fetch their
+          // own data instead of paying a getServerSideProps round trip.
+          // push (not replace) so Back returns the admin to the inbox view.
+          void router.push(
+            { pathname: "/admin/messages", query: { student: found.id } },
+            undefined,
+            { shallow: true },
+          );
+        }}
+      />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
         {/* Left pane. On small screens the two panes take turns rather than
@@ -791,14 +848,27 @@ export default function AdminMessages({ user }: Props) {
             </>
           ) : (
             <>
+              {/* A looked-up student with no DM thread yet has no row in
+                  `threads`, so the header falls back to the lookup's own
+                  identity — otherwise it would sit on "Opening thread…"
+                  forever, because no fetch will ever produce a thread row
+                  until the admin's first reply creates one. */}
               <PanelHeader
-                title={selected ? selected.studentName : "Conversation"}
+                title={
+                  selected
+                    ? selected.studentName
+                    : lookupForSelection
+                      ? lookupForSelection.name
+                      : "Conversation"
+                }
                 subtitle={
                   selected
                     ? [selected.studentNumber, selected.studentEmail]
                         .filter(Boolean)
                         .join(" · ") || undefined
-                    : "Opening thread…"
+                    : lookupForSelection
+                      ? lookupForSelection.studentId || undefined
+                      : "Opening thread…"
                 }
                 right={
                   <NeonButton
@@ -927,7 +997,7 @@ export default function AdminMessages({ user }: Props) {
                     onChange={handleDraftChange}
                     onKeyDown={handleKeyDown}
                     maxLength={MAX_DM_LENGTH}
-                    placeholder="Reply as Students Affairs…  (Enter to send, Shift+Enter for a new line)"
+                    placeholder="Reply as Student Affairs…  (Enter to send, Shift+Enter for a new line)"
                     className="field max-h-[8.25rem] flex-1 resize-none overflow-y-auto"
                   />
                   <NeonButton type="submit" disabled={!canSend} loading={sending}>
@@ -1044,16 +1114,18 @@ function ThreadRow({
  * identity chip so the admin can confirm they reached the right person before
  * the thread opens.
  */
-function MessageALookup({ onFound }: { onFound: (userId: string) => void }) {
+/**
+ * The full found user is handed to onFound, not just the id, because the
+ * caller needs the name and matric number to stand in for a thread row that
+ * does not exist yet.
+ */
+function MessageALookup({ onFound }: { onFound: (user: LookedUpUser) => void }) {
   const [identifier, setIdentifier] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<
     | { state: "idle" }
     | { state: "not-found"; message: string }
-    | {
-        state: "found";
-        user: { id: string; name: string; studentId: string; anonymousId: string | null };
-      }
+    | { state: "found"; user: LookedUpUser }
   >({ state: "idle" });
 
   async function find(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -1152,7 +1224,7 @@ function MessageALookup({ onFound }: { onFound: (userId: string) => void }) {
           <NeonButton
             type="button"
             className="px-3 py-1.5 text-xs"
-            onClick={() => onFound(result.user.id)}
+            onClick={() => onFound(result.user)}
           >
             Open their direct messages
           </NeonButton>

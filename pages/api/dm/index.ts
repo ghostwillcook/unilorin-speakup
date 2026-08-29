@@ -9,7 +9,7 @@ import {
 import type { Role } from "@/lib/guards";
 
 /**
- * GET /api/dm — the Students Affairs Unit's inbox.
+ * GET /api/dm — the Student Affairs Unit's inbox.
  *
  * A DM "thread" is not a row anywhere: the schema keys messages by the student
  * who owns the conversation, because a student always writes to the Unit

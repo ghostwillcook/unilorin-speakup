@@ -33,8 +33,14 @@ export default function StudentDock({
   user,
   onSignOut,
 }: {
-  /** Same keys as the desktop tab bar, so the two stay in lockstep. */
-  tabs: ReadonlyArray<{ key: string; label: string; icon: "chat" | "dm" | "complaint" }>;
+  /** Same keys as the desktop tab bar, so the two stay in lockstep. The icon
+      union mirrors the dock's own DockIcon kinds — "room" is the crowd, not
+      the envelope, so the Anonymous Room never reads as Direct Messages. */
+  tabs: ReadonlyArray<{
+    key: string;
+    label: string;
+    icon: "chat" | "dm" | "complaint" | "room";
+  }>;
   active: string;
   onChange: (key: string) => void;
   user: SessionUser;
@@ -145,7 +151,13 @@ export default function StudentDock({
    and joins). Interiors are knocked out in white on the filled variants —
    the bar's own colour — so details like the envelope flap stay legible
    against the solid fill. */
-function DockIcon({ kind, active }: { kind: "chat" | "dm" | "complaint" | "menu"; active: boolean }) {
+function DockIcon({
+  kind,
+  active,
+}: {
+  kind: "chat" | "dm" | "complaint" | "room" | "menu";
+  active: boolean;
+}) {
   const common = {
     width: 22,
     height: 22,
@@ -220,6 +232,26 @@ function DockIcon({ kind, active }: { kind: "chat" | "dm" | "complaint" | "menu"
         <path d="M12 4.5 21 19.5H3L12 4.5Z" {...stroke} />
         <path d="M12 10v4" {...stroke} />
         <circle cx="12" cy="16.8" r="0.9" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (kind === "room") {
+    // A crowd — the Anonymous Room is students among students. The paths
+    // mirror the side rail's crowd icon in pages/student/index.tsx: two
+    // figures (head circle + shoulder arc) and a partial third. Active is a
+    // plain solid fill of those same shapes — unlike the envelope or the
+    // triangle there is no interior detail to knock out in white.
+    return (
+      <svg {...common}>
+        <circle
+          cx="9"
+          cy="8"
+          r="3.2"
+          {...(active ? { fill: "currentColor" } : stroke)}
+        />
+        <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" {...(active ? { fill: "currentColor" } : stroke)} />
+        <path d="M15.5 5.6a3 3 0 0 1 0 5.8" {...(active ? { fill: "currentColor" } : stroke)} />
+        <path d="M17.4 14.3a5.5 5.5 0 0 1 3.1 4.7" {...(active ? { fill: "currentColor" } : stroke)} />
       </svg>
     );
   }

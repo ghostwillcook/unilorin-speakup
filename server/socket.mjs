@@ -326,10 +326,18 @@ function presencePayload() {
  * Pseudonyms currently in use, so two students in the same room are not both
  * "Anonymous #42" — which would read as one person contradicting themselves.
  *
+ * Fallback-only since the global room switched to reusing each student's
+ * LiveConversation pseudonym (see the connection handler): the in-process set
+ * guards only the random claims made when that lookup fails.
+ *
  * @type {Set<string>}
  */
 const takenPseudonyms = new Set();
 
+/**
+ * Claims a random pseudonym for this connection. Fallback-only — see
+ * takenPseudonyms above for when this runs.
+ */
 function claimPseudonym() {
   // 10..999 keeps N at the specified 2-3 digits.
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -564,6 +572,13 @@ async function handleChatSend(socket, payload) {
       return;
     }
 
+    // The pseudonym is set in the connection bootstrap IIFE; a message sent
+    // before that completes would otherwise be persisted without one. Claim a
+    // random fallback (the in-process path) rather than write "undefined".
+    if (socket.data.pseudonym === undefined) {
+      socket.data.pseudonym = claimPseudonym();
+    }
+
     const pseudonym = settings.anonymousMode
       ? socket.data.pseudonym
       : user.name || socket.data.pseudonym;
@@ -596,6 +611,17 @@ async function handleDmSend(socket, payload) {
     if (content.length > MAX_DM_LENGTH) {
       socket.emit("chat:error", {
         message: `Message must be ${MAX_DM_LENGTH} characters or fewer.`,
+      });
+      return;
+    }
+
+    // Validation runs first so a rejected message never costs the sender part
+    // of their allowance.
+    const settings = await getSettings();
+    const verdict = checkRateLimit(user.id, settings.chatRateLimitPerMin);
+    if (!verdict.ok) {
+      socket.emit("chat:error", {
+        message: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
       });
       return;
     }
@@ -739,6 +765,17 @@ async function handleComplaintSend(socket, payload) {
       return;
     }
 
+    // Validation runs first so a rejected message never costs the sender part
+    // of their allowance.
+    const settings = await getSettings();
+    const verdict = checkRateLimit(user.id, settings.chatRateLimitPerMin);
+    if (!verdict.ok) {
+      socket.emit("chat:error", {
+        message: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
+      });
+      return;
+    }
+
     const complaint = await complaintForUser(user, complaintId);
     if (!complaint) {
       socket.emit("chat:error", { message: "Conversation not available." });
@@ -789,6 +826,31 @@ function toLiveMessage(row) {
   };
 }
 
+/**
+ * Picks a pseudonym no other conversation is using.
+ *
+ * A duplicate is not merely cosmetic: the admin inbox lists conversations by
+ * pseudonym, so two students both showing "Anonymous #42" makes it ambiguous
+ * which thread an admin is answering. The REST twin in /api/livechat picks
+ * unchecked too, so a collision can come from either side — the check here
+ * narrows, not eliminates, the window (the twin needs the same fix).
+ *
+ * Ten attempts against 990 slots covers all but ~1% of collision odds even in
+ * a busy room; past that, accepting a duplicate beats refusing the student a
+ * conversation.
+ */
+async function pickLivePseudonym() {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = `Anonymous #${10 + Math.floor(Math.random() * 990)}`;
+    const clash = await prisma.liveConversation.findFirst({
+      where: { pseudonym: candidate },
+      select: { id: true },
+    });
+    if (!clash) return candidate;
+  }
+  return `Anonymous #${10 + Math.floor(Math.random() * 990)}`;
+}
+
 /** Creates the student's conversation if this is their first touch — the
  *  socket twin of ensureConversation in /api/livechat. */
 async function ensureLiveConversation(userId) {
@@ -798,7 +860,7 @@ async function ensureLiveConversation(userId) {
   });
   if (existing) return existing;
   return prisma.liveConversation.create({
-    data: { userId, pseudonym: `Anonymous #${10 + Math.floor(Math.random() * 990)}` },
+    data: { userId, pseudonym: await pickLivePseudonym() },
     select: { id: true, pseudonym: true, status: true },
   });
 }
@@ -836,6 +898,17 @@ async function handleLivechatJoin(socket, payload) {
 async function handleLivechatSend(socket, payload) {
   const user = socket.data.user;
   try {
+    // livechat:send is the student's voice by definition — the conversation is
+    // resolved BY the sender's user id and the row is written with
+    // senderRole "STUDENT". Without this check an admin emitting the event
+    // would create a conversation owned by the admin carrying a student-voiced
+    // message, which is indistinguishable from a student's own words in the
+    // inbox. Admins reply through livechat:reply.
+    if (user.role !== "STUDENT") {
+      socket.emit("chat:error", { message: "Conversation not available." });
+      return;
+    }
+
     const content = readContent(payload);
     if (content === null) {
       socket.emit("chat:error", { message: "Message cannot be empty." });
@@ -844,6 +917,17 @@ async function handleLivechatSend(socket, payload) {
     if (content.length > MAX_THREAD_LENGTH) {
       socket.emit("chat:error", {
         message: `Message must be ${MAX_THREAD_LENGTH} characters or fewer.`,
+      });
+      return;
+    }
+
+    // Validation runs first so a rejected message never costs the sender part
+    // of their allowance.
+    const settings = await getSettings();
+    const verdict = checkRateLimit(user.id, settings.chatRateLimitPerMin);
+    if (!verdict.ok) {
+      socket.emit("chat:error", {
+        message: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
       });
       return;
     }
@@ -907,6 +991,17 @@ async function handleLivechatReply(socket, payload) {
       return;
     }
 
+    // Validation runs first so a rejected message never costs the sender part
+    // of their allowance.
+    const settings = await getSettings();
+    const verdict = checkRateLimit(user.id, settings.chatRateLimitPerMin);
+    if (!verdict.ok) {
+      socket.emit("chat:error", {
+        message: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
+      });
+      return;
+    }
+
     const conversation = await prisma.liveConversation.findUnique({
       where: { id: conversationId },
       select: { id: true },
@@ -945,10 +1040,13 @@ io.on("connection", (socket) => {
   const user = socket.data.user;
   const isAdmin = user.role === "ADMIN";
 
-  // Fixed for the life of this connection. Staff are labelled instead of
-  // anonymised: a reply from the Unit that looked like "Anonymous #71" would
-  // misrepresent who was speaking.
-  socket.data.pseudonym = isAdmin ? STAFF_LABEL : claimPseudonym();
+  // The pseudonym is assigned in the bootstrap IIFE at the bottom of this
+  // handler, not here: a stable identity across reconnects means looking it up
+  // in the database (see that IIFE for why), and this callback cannot await.
+  //
+  // Staff are labelled instead of anonymised — a reply from the Unit that
+  // looked like "Anonymous #71" would misrepresent who was speaking — so they
+  // get STAFF_LABEL; students get their LiveConversation pseudonym.
 
   // Every socket gets a personal room for DMs; admins share one for the inbox.
   socket.join(`user:${user.id}`);
@@ -1000,6 +1098,34 @@ io.on("connection", (socket) => {
   // Opening handshake payloads: who you are, and what has been said so far.
   void (async () => {
     try {
+      // The pseudonym must be set BEFORE anything is emitted: the session
+      // payload below reads it through displayNameFor. Students reuse the
+      // pseudonym of their LiveConversation row — the same handle the Live
+      // Chat panel shows, and already stable per student — so a reconnecting
+      // student keeps the name their earlier bubbles in the global room carry.
+      // A fresh random claim per connection would re-render their own recent
+      // messages as someone else's after every reconnect, which is exactly
+      // the confusion anonymity exists to prevent. The lookup is a read for
+      // anyone who has ever touched Live Chat, and a one-time create for
+      // everyone else.
+      if (isAdmin) {
+        socket.data.pseudonym = STAFF_LABEL;
+      } else {
+        try {
+          socket.data.pseudonym = (await ensureLiveConversation(user.id))
+            .pseudonym;
+        } catch (error) {
+          // The room must still work when the lookup fails (e.g. the database
+          // briefly unreachable): fall back to a random in-process claim.
+          // claimPseudonym/releasePseudonym exist for this path only.
+          console.warn(
+            "[socket] pseudonym lookup failed, falling back to random:",
+            errText(error),
+          );
+          socket.data.pseudonym = claimPseudonym();
+        }
+      }
+
       socket.emit("session", { pseudonym: await displayNameFor(socket) });
       socket.emit("chat:history", await recentHistory());
     } catch (error) {

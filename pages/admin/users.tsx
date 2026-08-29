@@ -11,7 +11,7 @@ import { dateTimeLabel } from "@/lib/pseudonym";
 /**
  * Admin account roster.
  *
- * Deactivation is the Students Affairs Unit's only moderation lever, and it is a
+ * Deactivation is the Student Affairs Unit's only moderation lever, and it is a
  * real one: lib/auth.ts refuses a sign-in when `isActive` is false and the
  * guards evict anyone already holding a token. So the destructive direction is
  * confirmed before it fires, while reactivation — which only restores access —
@@ -26,7 +26,7 @@ const DEBOUNCE_MS = 350;
 
 const ADMIN_LOCK =
   "Administrator accounts cannot be deactivated — this is the account that " +
-  "keeps the Students Affairs console reachable. Change the role first if it " +
+  "keeps the Student Affairs console reachable. Change the role first if it " +
   "should lose access.";
 
 interface UserRow {

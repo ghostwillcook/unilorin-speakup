@@ -31,12 +31,12 @@ export function UnilorinLogo({ size = 64 }: { size?: number }) {
 }
 
 /**
- * Students Affairs Unit mark. No such asset exists on this machine, so this is
+ * Student Affairs Unit mark. No such asset exists on this machine, so this is
  * a deliberate placeholder — drop the real file at /public/student-affairs.png
  * and swap this for <img>.
  */
 export function StudentAffairsLogo({ size = 64 }: { size?: number }) {
-  return <CrestFallback size={size} label="Students Affairs" initials="SAU" />;
+  return <CrestFallback size={size} label="Student Affairs" initials="SAU" />;
 }
 
 function CrestFallback({

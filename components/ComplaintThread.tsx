@@ -22,7 +22,7 @@ import { useSocket } from "@/lib/socket-client";
  */
 
 const MAX_CONTENT = 4000;
-const STAFF_LABEL = "Students Affairs";
+const STAFF_LABEL = "Student Affairs";
 
 export interface ThreadMessage {
   id: string;
@@ -56,6 +56,21 @@ function byTime(a: ThreadMessage, b: ThreadMessage): number {
   return a.createdAt < b.createdAt ? -1 : 1;
 }
 
+/**
+ * chat:error payloads carry { message } (see server/socket.mjs); anything
+ * malformed falls back to calm copy rather than rendering "undefined".
+ */
+function readErrorMessage(value: unknown): string {
+  if (
+    isRecord(value) &&
+    typeof value.message === "string" &&
+    value.message.trim()
+  ) {
+    return value.message;
+  }
+  return "Message could not be delivered. Please try again.";
+}
+
 export default function ComplaintThread({
   complaintId,
   viewerRole,
@@ -63,6 +78,7 @@ export default function ComplaintThread({
   subtitle,
   badge,
   context,
+  otherLabel,
   onBack,
   onDismiss,
 }: {
@@ -78,6 +94,13 @@ export default function ComplaintThread({
    * rather than the record living in a separate card outside the thread.
    */
   context?: React.ReactNode;
+  /**
+   * Label for the OTHER side's messages. Defaults to the Unit for a student
+   * viewer; the admin console passes the student's name, because a thread
+   * where the student's own words carry a "Student Affairs" label reads as
+   * the Unit talking to itself.
+   */
+  otherLabel?: string;
   onBack?: () => void;
   onDismiss?: () => void;
 }) {
@@ -117,6 +140,13 @@ export default function ComplaintThread({
 
   useEffect(() => {
     let active = true;
+
+    // A complaintId change without a remount must not paint the OLD
+    // complaint's messages under the NEW one's header while the fetch is in
+    // flight — or forever, if that fetch fails. Clearing both first keeps the
+    // loading state honest: empty thread, no stale error, then real history.
+    setMessages([]);
+    setError(null);
     setLoading(true);
 
     void (async () => {
@@ -167,11 +197,34 @@ export default function ComplaintThread({
       if (message) mergeMessage(message);
     }
 
+    // A socket send clears the composer optimistically; if the server rejects
+    // it (empty, over-length, rate-limited, complaint gone) this is the ONLY
+    // channel through which the failure surfaces — without it the message
+    // would simply vanish.
+    function handleChatError(payload: unknown): void {
+      setError(readErrorMessage(payload));
+    }
+
+    // The server re-runs its connection handler on every reconnect, and room
+    // memberships die with the old connection — so complaint:new would stop
+    // arriving while the badge still says "Live". Re-announce interest;
+    // join() is idempotent server-side, so the repeat is free. (An arrow, not
+    // a function declaration: hoisted declarations lose the null-narrowing on
+    // socket above, and this handler can only ever fire on a live socket.)
+    const handleReconnect = (): void => {
+      socket.emit("complaint:join", { complaintId });
+    };
+
     socket.on("complaint:new", handleNew);
+    socket.on("chat:error", handleChatError);
+    socket.on("connect", handleReconnect);
+
     socket.emit("complaint:join", { complaintId });
 
     return () => {
       socket.off("complaint:new", handleNew);
+      socket.off("chat:error", handleChatError);
+      socket.off("connect", handleReconnect);
     };
   }, [complaintId, mergeMessage, socket]);
 
@@ -275,7 +328,11 @@ export default function ComplaintThread({
   /* ---------------------------------------------------------------- render */
 
   const canSend = !sending && draft.trim().length > 0;
-  const selfLabel = viewerRole === "ADMIN" ? "Students Affairs" : "You";
+  const selfLabel = viewerRole === "ADMIN" ? "Student Affairs" : "You";
+  // The other side: the Unit for a student viewer, the student by name for
+  // the admin console — a thread where the student's words carry the Unit's
+  // label reads as the Unit talking to itself.
+  const theirLabel = otherLabel ?? STAFF_LABEL;
 
   return (
     <ChatShell
@@ -370,7 +427,7 @@ export default function ComplaintThread({
                           : "font-semibold text-accent"
                       }
                     >
-                      {mine ? selfLabel : STAFF_LABEL}
+                      {mine ? selfLabel : theirLabel}
                     </span>
                     <time
                       dateTime={message.createdAt}

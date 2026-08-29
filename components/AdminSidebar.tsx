@@ -101,7 +101,7 @@ export default function AdminSidebar() {
           <span className="min-w-0 flex-1 text-base leading-tight">
             <SpeakUpWordmark compact />
             <span className="mt-1 block text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted">
-              Students Affairs
+              Student Affairs
             </span>
           </span>
         </div>

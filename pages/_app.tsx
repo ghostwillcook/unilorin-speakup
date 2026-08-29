@@ -13,7 +13,7 @@ export default function App({
         <title>UNILORIN SpeakUp</title>
         <meta
           name="description"
-          content="Anonymous complaint and chat platform for the University of Ilorin Students Affairs Unit."
+          content="Anonymous complaint and chat platform for the University of Ilorin Student Affairs Unit."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0A0A0A" />

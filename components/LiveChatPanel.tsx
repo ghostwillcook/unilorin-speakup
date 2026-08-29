@@ -24,7 +24,7 @@ import { statusLabel, useSocket } from "@/lib/socket-client";
  */
 
 const MAX_CONTENT = 4000;
-const STAFF_LABEL = "Students Affairs";
+const STAFF_LABEL = "Student Affairs";
 
 interface LiveChatMessage {
   id: string;
@@ -56,6 +56,21 @@ function asLiveMessage(value: unknown): LiveChatMessage | null {
 function byTime(a: LiveChatMessage, b: LiveChatMessage): number {
   if (a.createdAt === b.createdAt) return a.id.localeCompare(b.id);
   return a.createdAt < b.createdAt ? -1 : 1;
+}
+
+/**
+ * chat:error payloads carry { message } (see server/socket.mjs); anything
+ * malformed falls back to calm copy rather than rendering "undefined".
+ */
+function readErrorMessage(value: unknown): string {
+  if (
+    isRecord(value) &&
+    typeof value.message === "string" &&
+    value.message.trim()
+  ) {
+    return value.message;
+  }
+  return "Message could not be delivered. Please try again.";
 }
 
 export default function LiveChatPanel() {
@@ -149,16 +164,38 @@ export default function LiveChatPanel() {
       }
     }
 
+    // A socket send clears the composer optimistically; if the server rejects
+    // it (empty, over-length, rate-limited) this is the ONLY channel through
+    // which the failure surfaces — without it the message would just vanish.
+    function handleChatError(payload: unknown): void {
+      setError(readErrorMessage(payload));
+    }
+
+    // The server re-runs its connection handler on every reconnect, and room
+    // memberships die with the old connection — so livechat:new would stop
+    // arriving while the badge still says "Live". Re-announce interest;
+    // join() is idempotent server-side, so the repeat is free. (An arrow, not
+    // a function declaration: hoisted declarations lose the null-narrowing on
+    // socket above, and this handler can only ever fire on a live socket.)
+    const handleReconnect = (): void => {
+      socket.emit("livechat:join", {});
+    };
+
     socket.on("livechat:new", handleNew);
     socket.on("livechat:conversation", handleConversation);
+    socket.on("chat:error", handleChatError);
+    socket.on("connect", handleReconnect);
 
     // Announce interest so the server can room this socket. Safe to repeat:
-    // join is idempotent and re-fires on reconnect.
+    // join is idempotent server-side, and handleReconnect re-emits it after
+    // every reconnect — the room survives the connection being replaced.
     socket.emit("livechat:join", {});
 
     return () => {
       socket.off("livechat:new", handleNew);
       socket.off("livechat:conversation", handleConversation);
+      socket.off("chat:error", handleChatError);
+      socket.off("connect", handleReconnect);
     };
   }, [mergeMessage, socket, userId]);
 
@@ -263,7 +300,7 @@ export default function LiveChatPanel() {
   return (
     <ChatShell
       title="Live Chat"
-      subtitle="A private conversation with the Students Affairs Unit."
+      subtitle="A private conversation with the Student Affairs Unit."
       badge={
         <span className="badge badge-neutral">
           <span
@@ -299,7 +336,7 @@ export default function LiveChatPanel() {
           className="flex items-end gap-2 border-t border-line px-5 py-4"
         >
           <label htmlFor="livechat-composer" className="sr-only">
-            Message the Students Affairs Unit
+            Message the Student Affairs Unit
           </label>
           <textarea
             id="livechat-composer"
@@ -326,7 +363,7 @@ export default function LiveChatPanel() {
         onScroll={handleScroll}
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
         role="log"
-        aria-label="Conversation with Students Affairs"
+        aria-label="Conversation with Student Affairs"
       >
         {loading ? (
           <p className="px-1 py-10 text-center text-sm text-muted">

@@ -14,7 +14,7 @@ import {
  *
  * Anonymity in SpeakUp is anonymity *between students*: `PublicChatMessage`
  * deliberately carries no userId to the chat clients, while `ChatMessage.userId`
- * is persisted so the Students Affairs Unit can still act on abuse. This route
+ * is persisted so the Student Affairs Unit can still act on abuse. This route
  * is the only reader of that link, which is why it is ADMIN-gated and never
  * cached.
  */

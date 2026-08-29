@@ -6,6 +6,7 @@ import {
   requireDb,
   requireRole,
 } from "@/lib/guards";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET  /api/complaints/[id]/messages — the complaint's dedicated thread.
@@ -130,6 +131,16 @@ export default async function handler(
         res
           .status(400)
           .json({ error: `Message must be ${MAX_CONTENT} characters or fewer.` });
+        return;
+      }
+
+      // Same allowance as the socket path (see lib/rate-limit.ts): validation
+      // first so a rejected message never costs part of the window.
+      const verdict = checkRateLimit(caller.id);
+      if (!verdict.ok) {
+        res.status(429).json({
+          error: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
+        });
         return;
       }
 

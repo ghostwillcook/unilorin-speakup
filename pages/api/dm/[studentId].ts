@@ -7,6 +7,7 @@ import {
   requireRole,
 } from "@/lib/guards";
 import type { Role, SessionUser } from "@/lib/guards";
+import { checkRateLimit } from "@/lib/rate-limit";
 // Type-only import: erased at compile time, so pulling the wire shape from the
 // client module costs the API bundle nothing and keeps one definition of DmMessage.
 import type { DmMessage } from "@/lib/socket-client";
@@ -150,6 +151,15 @@ async function sendMessage(
   if (content.length > MAX_CONTENT) {
     res.status(400).json({
       error: `Message must be ${MAX_CONTENT} characters or fewer.`,
+    });
+    return;
+  }
+
+  // Same allowance as the socket twin of this write path.
+  const verdict = checkRateLimit(user.id);
+  if (!verdict.ok) {
+    res.status(429).json({
+      error: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
     });
     return;
   }

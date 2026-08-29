@@ -165,7 +165,7 @@ interface SeedAccount {
 
 const ACCOUNTS: SeedAccount[] = [
   {
-    name: "Students Affairs Unit",
+    name: "Student Affairs Unit",
     email: ADMIN_EMAIL,
     studentId: "ADMIN001",
     role: "ADMIN",

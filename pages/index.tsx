@@ -34,10 +34,10 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>UNILORIN SpeakUp — Students Affairs Unit</title>
+        <title>UNILORIN SpeakUp — Student Affairs Unit</title>
         <meta
           name="description"
-          content="Report an issue to the University of Ilorin Students Affairs Unit, or talk to other students under a pseudonym."
+          content="Report an issue to the University of Ilorin Student Affairs Unit, or talk to other students under a pseudonym."
         />
       </Head>
 
@@ -253,7 +253,7 @@ function Hero() {
                 rather than be measured against the true container width. */}
             <span className="wl-kicker justify-center max-w-none">
               <span className="wl-kicker-dot" aria-hidden="true" />
-              University of Ilorin · Students Affairs Unit
+              University of Ilorin · Student Affairs Unit
             </span>
           </Reveal>
 
@@ -309,7 +309,7 @@ function TickerBand() {
           "Anonymous to other students",
           "A status you can follow",
           "A reply you can read",
-          "Direct line to Students Affairs",
+          "Direct line to Student Affairs",
           "Evidence stays private",
         ]}
         seconds={30}
@@ -429,7 +429,7 @@ function BentoGrid() {
         <div className="wl-card-dark wl-card-hover p-7 lg:col-span-2">
           <h3 className="wl-h3 text-xl">A direct line to the Unit</h3>
           <p className="mt-3 text-sm leading-relaxed text-white/80">
-            Not everything needs a formal complaint. Message the Students
+            Not everything needs a formal complaint. Message the Student
             Affairs Unit privately and keep the whole conversation in one
             place.
           </p>
@@ -599,6 +599,19 @@ function StatsBand() {
  *  CSS columns give the staggered heights without a masonry library. */
 function CategoryMasonry() {
   const categories = [
+    // Harassment and assault lead the list on purpose: they are the most
+    // serious things a student can raise, and the masonry order is the order
+    // a skim reads, so they must be the first two cards seen.
+    {
+      title: "Harassment",
+      body: "Harassment of any kind — from staff, students, or anyone else — belongs here. Report it, and it will be handled with care.",
+      chips: ["Harassment", "Confidential"],
+    },
+    {
+      title: "Assault",
+      body: "Physical or sexual assault. These reports reach the Unit directly and are treated with priority.",
+      chips: ["Assault", "Priority"],
+    },
     {
       title: "Hostels & facilities",
       body: "Water supply, broken sockets, unsafe fittings — the things you live with every day.",
@@ -671,15 +684,15 @@ function CategoryMasonry() {
  * SpeakUp is a way in to the office, not a replacement for it, so a student
  * should be able to recognise the building before walking across campus to it.
  *
- * NOTE: the opening hours below are the standard Nigerian public-service working
- * day, not something the Unit has confirmed. Check them before this page goes in
- * front of students — a wrong closing time sends someone over for nothing.
+ * NOTE: the Unit has confirmed its hours — Monday to Friday until 18:00, with
+ * weekend availability on a published schedule. If the schedule changes, this
+ * page should follow it: a wrong closing time sends someone over for nothing.
  */
 const VISIT_DETAILS = [
   {
     label: "Where",
     lines: [
-      "Students Affairs Unit",
+      "Student Affairs Unit",
       "University of Ilorin, Main Campus",
       "Ilorin, Kwara State",
     ],
@@ -690,7 +703,7 @@ const VISIT_DETAILS = [
   },
   {
     label: "Open",
-    lines: ["Monday – Friday", "8:00 – 16:00"],
+    lines: ["Monday – Friday", "8:00 – 18:00", "Weekends on schedule"],
   },
 ];
 
@@ -703,14 +716,14 @@ function VisitTheUnit() {
             <div className="relative h-64 overflow-hidden rounded-2xl sm:h-80 lg:h-[24rem]">
               <Image
                 src="/student-affairs-entrance.png"
-                alt="The entrance to the Students Affairs Unit at the University of Ilorin"
+                alt="The entrance to the Student Affairs Unit at the University of Ilorin"
                 fill
                 sizes="(max-width: 1024px) 100vw, 55vw"
                 className="object-cover"
               />
             </div>
             <figcaption className="px-2 pb-1 pt-3 text-xs text-[rgb(17_12_30/0.55)]">
-              The Students Affairs Unit, University of Ilorin.
+              The Student Affairs Unit, University of Ilorin.
             </figcaption>
           </figure>
         </Reveal>
@@ -769,15 +782,15 @@ function FaqSection() {
   const items = [
     {
       q: "Will other students know it's me?",
-      a: "No. In the live chat you appear only as a pseudonym like Anonymous #42 — your name is never shown to other students. Complaints and direct messages carry your identity to the Students Affairs Unit alone, because that is what lets them actually resolve your case.",
+      a: "No. In the live chat you appear only as a pseudonym like Anonymous #42 — your name is never shown to other students. Complaints and direct messages carry your identity to the Student Affairs Unit alone, because that is what lets them actually resolve your case.",
     },
     {
       q: "What can I report?",
-      a: "Anything that affects student life: hostel conditions, missing results, safety concerns, overcharging by shuttle operators, problems with fees or documents. If it matters to you, it belongs on the record.",
+      a: "Anything that affects student life: hostel conditions, missing results, harassment or assault, safety concerns, overcharging by shuttle operators, problems with fees or documents. If it matters to you, it belongs on the record.",
     },
     {
       q: "What happens after I submit a complaint?",
-      a: "Your complaint gets a status — pending, in review, resolved or rejected — that you can check any time. When the Students Affairs Unit responds, their reply lands on the same complaint, so the whole history stays in one place.",
+      a: "Your complaint gets a status — pending, in review, resolved or rejected — that you can check any time. When the Student Affairs Unit responds, their reply lands on the same complaint, so the whole history stays in one place.",
     },
     {
       q: "Can I attach evidence?",
@@ -858,7 +871,7 @@ function SiteFooter() {
         <div className="flex items-center gap-3">
           <UnilorinLogo size={30} />
           <p className="text-xs leading-relaxed text-[rgb(17_12_30/0.55)]">
-            Students Affairs Unit
+            Student Affairs Unit
             <br />
             University of Ilorin, Nigeria
           </p>

@@ -6,6 +6,7 @@ import {
   requireDb,
   requireRole,
 } from "@/lib/guards";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET   /api/admin/livechat/[id] — one conversation's full message history.
@@ -114,6 +115,15 @@ export default async function handler(
         res
           .status(400)
           .json({ error: `Message must be ${MAX_CONTENT} characters or fewer.` });
+        return;
+      }
+
+      // Same allowance as the socket twin of this write path.
+      const verdict = checkRateLimit(caller.id);
+      if (!verdict.ok) {
+        res.status(429).json({
+          error: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,
+        });
         return;
       }
 

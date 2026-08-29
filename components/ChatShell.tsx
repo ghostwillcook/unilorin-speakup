@@ -50,13 +50,23 @@ export default function ChatShell({
   // (rotation between the two layouts must not leave the body stuck).
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
-    if (!mq.matches) return;
 
+    // Captured BEFORE any lock is applied, so removal restores what the page
+    // actually had — usually "", but another overlay's lock must survive us.
     const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onMq = (e: MediaQueryListEvent) => {
-      document.body.style.overflow = e.matches ? "hidden" : previous;
+
+    // Applied per the CURRENT match, not only on change events: a shell
+    // mounted at desktop width must still lock when the window later narrows
+    // into the mobile layout. (This effect once returned early when
+    // !mq.matches — before registering the listener — so a desktop-mounted
+    // shell never locked at all, and the page scrolled behind the
+    // full-screen conversation.)
+    const setLock = (mobile: boolean): void => {
+      document.body.style.overflow = mobile ? "hidden" : previous;
     };
+    const onMq = (e: MediaQueryListEvent): void => setLock(e.matches);
+
+    setLock(mq.matches);
     mq.addEventListener("change", onMq);
     return () => {
       mq.removeEventListener("change", onMq);

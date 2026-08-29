@@ -141,7 +141,13 @@ export default function ComplaintForm({
         throw new Error(body.error ?? "Could not submit your complaint.");
       }
 
-      const body = (await res.json()) as { complaint?: { id?: string } };
+      // Guarded like the other res.json() calls: a 2xx with a non-JSON body
+      // must not throw here — the complaint was already created, and an error
+      // now would leave the fields filled in for a duplicate resubmit. A
+      // missing id just means success without the tappable toast.
+      const body = (await res.json().catch(() => ({}))) as {
+        complaint?: { id?: string };
+      };
 
       setTitle("");
       setDescription("");
