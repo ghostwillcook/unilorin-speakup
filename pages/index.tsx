@@ -114,7 +114,7 @@ function SiteHeader() {
           <Link href="/auth/signin" className="wl-btn-ghost hidden md:inline-flex">
             Log in
           </Link>
-          <Link href="/auth/signin" className="wl-btn-violet whitespace-nowrap">
+          <Link href="/welcome" className="wl-btn-violet whitespace-nowrap">
             Get started
           </Link>
 
@@ -271,7 +271,7 @@ function Hero() {
           <Reveal delay={240}>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
               <Link
-                href="/auth/signin"
+                href="/welcome"
                 className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[0.9375rem] font-bold text-[var(--wl-violet)] shadow-[0_24px_48px_rgb(16_2_111/0.28)] transition-transform duration-150 hover:-translate-y-0.5"
               >
                 Get started
@@ -834,7 +834,7 @@ function CtaBanner() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
-              href="/auth/signin"
+              href="/welcome"
               className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[0.9375rem] font-bold text-[var(--wl-violet)] shadow-[0_24px_48px_rgb(16_2_111/0.28)] transition-transform duration-150 hover:-translate-y-0.5"
             >
               Get started
