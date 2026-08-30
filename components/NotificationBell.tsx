@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 
 import { dateTimeLabel } from "@/lib/pseudonym";
@@ -28,6 +29,15 @@ import { useSocket } from "@/lib/socket-client";
  * hosting page lifts the whole header to z-40 (and pins it against the
  * scroll-fold), so the header — and everything inside it, dropdown included —
  * clears the dock for as long as the menu is up.
+ *
+ * Popup toasts: a new notification also pops onto the screen as a dismissible
+ * card — not just a badge bump — because a student mid-complaint deserves to
+ * know the Unit just posted something. These render through a portal to
+ * document.body: the header's stacking context would otherwise cap them at
+ * z-20, under the dock, and a fixed element inside a sticky parent inherits
+ * that ceiling on several engines. Portaling to the top level lets them sit
+ * at z-50, above every console chrome element (header z-20/z-40, dock z-30,
+ * sheet z-31).
  */
 
 /** Mirrors StudentNotification in pages/api/notifications/index.ts. */
@@ -41,6 +51,21 @@ interface StudentNotification {
 }
 
 type PushState = "idle" | "on" | "failed";
+
+/** One on-screen popup toast, derived from a notification:new event. */
+interface ToastEntry {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+/** How long a toast stays on screen before closing itself. */
+const TOAST_MS = 8000;
+/** Cap on stacked toasts — a burst of five drops the oldest two rather than
+ *  filling the viewport. Three feels like "you have things to read"; five
+ *  feels like a takeover. */
+const TOAST_CAP = 3;
 
 // Monotonic counter for provisional notification:new rows. Date.now() alone
 // collides when two events land in the same millisecond (duplicate keys in
@@ -93,6 +118,9 @@ export default function NotificationBell({
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // Portal-mounted popup cards: one per recent notification:new, each with its
+  // own dismissal (Close button or the TOAST_MS timer).
+  const [toasts, setToasts] = useState<ToastEntry[]>([]);
 
   // Web Push support can only be probed in the browser, so it starts "no" and
   // flips after mount — SSR renders no button at all, which is correct.
@@ -108,6 +136,29 @@ export default function NotificationBell({
   const latestReq = useRef(0);
 
   const userId = session?.user?.id ?? null;
+
+  // Removes one toast — the Close button's handler. The auto-dismiss sweep
+  // below uses the same state setter on a timer.
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Auto-dismiss: a single timer keyed on the toast list, resetting whenever a
+  // new toast arrives (each gets a fresh TOAST_MS window from that point).
+  // The sweep parses the timestamp back out of the id (`toast-<ms>-<seq>`).
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const cutoff = Date.now() - TOAST_MS;
+      setToasts((prev) =>
+        prev.filter((t) => {
+          const stamp = Number.parseInt(t.id.split("-")[1] ?? "0", 10);
+          return Number.isNaN(stamp) || stamp > cutoff;
+        }),
+      );
+    }, TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [toasts]);
 
   /* ---------------------------------------------------------------- load */
 
@@ -155,7 +206,10 @@ export default function NotificationBell({
     // notification:new carries { title, body, createdAt } but no row id (see
     // server/socket.mjs), so the handler prepends a provisional row to light
     // the badge instantly and then refetches — the refetch swaps the provisional
-    // entry for the persisted one with its real id.
+    // entry for the persisted one with its real id. The same event also raises
+    // a popup toast: a badge bump alone is invisible to a student who isn't
+    // looking at the header, and "the Unit just posted" is worth interrupting
+    // for.
     function handleNew(payload: unknown): void {
       if (!isRecord(payload)) return;
       const provisional: StudentNotification = {
@@ -170,6 +224,23 @@ export default function NotificationBell({
       };
       setNotifications((prev) => [provisional, ...prev]);
       setUnread((count) => count + 1);
+
+      // Popup toast — same content, own id so the Close button can target it
+      // independently of the badge row. The timestamp suffix doubles as the
+      // expiry key for the auto-dismiss sweep.
+      setToasts((prev) => {
+        const next: ToastEntry[] = [
+          {
+            id: `toast-${Date.now()}-${provisionalSeq}`,
+            title: provisional.title,
+            body: provisional.body,
+            createdAt: provisional.createdAt,
+          },
+          ...prev,
+        ];
+        return next.slice(0, TOAST_CAP);
+      });
+
       void load();
     }
 
@@ -321,6 +392,66 @@ export default function NotificationBell({
           </span>
         )}
       </button>
+
+      {/* Popup toasts: portaled to document.body so they escape the header's
+          z-20 stacking context entirely. Fixed bottom-right on desktop,
+          bottom-center on mobile (above the dock's 64px + safe-area). Each
+          card carries the notification's title and body with a Close button;
+          auto-dismisses after TOAST_MS. */}
+      {toasts.length > 0 &&
+        createPortal(
+          <div
+            aria-live="polite"
+            className="pointer-events-none fixed inset-x-4 bottom-[calc(80px+env(safe-area-inset-bottom,0px))] z-50 flex flex-col items-center gap-2 md:inset-x-auto md:right-6 md:bottom-6 md:items-end"
+          >
+            {toasts.map((toast) => (
+              <div
+                key={toast.id}
+                // pointer-events re-enabled on the card itself (the wrapper
+                // is pointer-events-none so taps pass through the gaps
+                // between stacked toasts to the page underneath).
+                className="pointer-events-auto w-full max-w-sm rounded-2xl border border-line bg-white px-4 py-3.5 shadow-[0_24px_48px_rgb(0_0_0/0.18)]"
+                role="status"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-graphite">
+                      {toast.title}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-muted">
+                      {toast.body}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => dismissToast(toast.id)}
+                    aria-label="Close notification"
+                    className="btn-icon -mr-1 -mt-1 h-7 w-7 shrink-0 rounded-full text-muted"
+                  >
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M6 6l12 12M18 6L6 18"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <p className="mt-2 text-right text-[0.6875rem] text-muted/60">
+                  {dateTimeLabel(toast.createdAt)}
+                </p>
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
 
       {open && (
         <div
