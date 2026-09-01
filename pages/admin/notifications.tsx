@@ -37,14 +37,6 @@ import { useSocket } from "@/lib/socket-client";
 // this composer all agree: the admin is the trusted author and the Postgres
 // TEXT column is unlimited. Only non-empty is validated (client-side here,
 // server-side in both write paths).
-/**
- * The socket send is fire-and-forget, so "no answer" has to eventually mean
- * something. 30s is generous: the server pushes to every subscription of
- * every recipient sequentially, so a large broadcast legitimately takes a
- * while — the guard only exists so a server that dies mid-send cannot leave
- * the Send button disabled forever.
- */
-const SEND_TIMEOUT_MS = 30_000;
 /** How long the "Sent to N students" confirmation lingers before fading. */
 const CONFIRMATION_MS = 6_000;
 
@@ -345,38 +337,23 @@ export default function AdminNotificationsPage() {
     };
     if (audience === "ONE" && target) payload.userId = target.id;
 
-    if (socket && online) {
-      // Fire-and-forget, same contract as a livechat reply: the success
-      // receipt is notification:sent { count }, the failure one chat:error.
-      // Neither is awaited here — the listener below owns both.
-      socket.emit("notification:send", payload);
-      pendingRef.current = { title: payload.title, body: payload.body };
-      setSending(true);
-      clearSendTimer();
-      sendTimerRef.current = window.setTimeout(() => {
-        if (!pendingRef.current) return;
-        pendingRef.current = null;
-        setSending(false);
-        setNotice(
-          "The server took too long to confirm the send. Check Recent sends below — if it is not listed, send again.",
-        );
-        // The send may have landed after the silence window closed, so the
-        // list the admin is being told to check is refreshed, not left stale.
-        void loadHistory();
-      }, SEND_TIMEOUT_MS);
-      return;
-    }
-
+    // Always send via REST, not the socket. The socket server on Render
+    // lags behind the web app on deploys (it deploys from GitHub, which
+    // had a credential block), and its older code still enforces the
+    // notification length caps this page no longer has. REST goes through
+    // the Netlify function, which always has the current code — the
+    // notification is persisted and Web-Pushed identically, only the
+    // realtime badge-bump arrives a moment later (the student's catch-up
+    // overlay on their next app open covers even that).
+    //
+    // When the socket server is confirmed current, this can revert to the
+    // socket-first path for the instant badge update.
     void sendViaRest(payload);
   }, [
     audience,
     body,
-    clearSendTimer,
-    loadHistory,
-    online,
     sending,
     sendViaRest,
-    socket,
     target,
     title,
   ]);
