@@ -390,7 +390,7 @@ export default function NotificationBell({
                         {dateTimeLabel(row.createdAt)}
                       </time>
                     </div>
-                    <p className="mt-0.5 text-sm leading-relaxed text-muted">
+                    <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed text-muted">
                       {row.body}
                     </p>
                   </li>

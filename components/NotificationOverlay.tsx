@@ -197,7 +197,10 @@ export default function NotificationOverlay() {
         <h3 className="mt-5 text-center text-lg font-bold text-graphite sm:text-xl">
           {current.title}
         </h3>
-        <p className="mt-3 text-center text-sm leading-relaxed text-muted sm:text-base">
+        {/* whitespace-pre-line preserves the admin's line breaks: a
+            multi-paragraph notification reads as paragraphs, not one solid
+            wall of text. (The default collapses \n into nothing.) */}
+        <p className="mt-3 whitespace-pre-line text-center text-sm leading-relaxed text-muted sm:text-base">
           {current.body}
         </p>
 
