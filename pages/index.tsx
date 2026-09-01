@@ -257,14 +257,13 @@ function Hero() {
             </span>
           </Reveal>
 
-          <h1 className="wl-display mt-7 text-[clamp(3rem,9vw,6.75rem)] text-white">
-            <SplitLines lines={["Speak up.", "Be heard."]} />
+          <h1 className="wl-display mt-7 text-[clamp(2.5rem,7vw,5.5rem)] text-white">
+            <SplitLines lines={["UNILORIN", "Student Connect."]} />
           </h1>
 
           <Reveal delay={140}>
             <p className="mx-auto mt-7 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">
-              Report it, follow it, and read the reply. Raise any complaint or
-              issue — anonymously if you would rather not be named.
+              Be Involved. Stay Informed. Speak Up, Make Change.
             </p>
           </Reveal>
 

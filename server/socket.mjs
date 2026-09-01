@@ -1068,9 +1068,11 @@ async function handleNotificationSend(socket, payload) {
     // Same caps as the REST twin (pages/api/admin/notifications.ts): the two
     // paths write the same rows and must accept the same input, and an
     // over-sized broadcast would fan out per student before failing per push.
-    if (title.length > 120 || body.length > 500) {
+    // Body cap is 3500 chars (~500 words) — see the REST twin's MAX_BODY note.
+    if (title.length > 120 || body.length > 3500) {
       socket.emit("chat:error", {
-        message: "Keep the title to 120 characters and the message to 500.",
+        message:
+          "Keep the title to 120 characters and the message to 500 words.",
       });
       return;
     }

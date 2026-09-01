@@ -34,9 +34,10 @@ import { useSocket } from "@/lib/socket-client";
  * how they are collapsed back into one entry per send.
  */
 
-/** Mirrors the API route's own limits (pages/api/admin/notifications.ts). */
+/** Mirrors the API route's own limits (pages/api/admin/notifications.ts).
+ *  Body is 3500 characters (~500 words) — see the route's MAX_BODY note. */
 const MAX_TITLE = 120;
-const MAX_BODY = 500;
+const MAX_BODY = 3500;
 /**
  * Char counters stay hidden until the field is this close to its limit — a
  * live "n/500" from the first keystroke is noise, but the admin should see the
@@ -540,10 +541,12 @@ export default function AdminNotificationsPage() {
                   Message
                   <CharCount value={body.length} max={MAX_BODY} />
                 </label>
+                {/* rows=8 gives a 500-word message room to breathe — at
+                    rows=5 the admin composes blind in a tiny scroll box. */}
                 <textarea
                   id="notification-body"
                   className="textarea"
-                  rows={5}
+                  rows={8}
                   value={body}
                   onChange={(event) => setBody(event.target.value.slice(0, MAX_BODY))}
                   maxLength={MAX_BODY}

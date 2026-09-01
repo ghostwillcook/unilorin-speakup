@@ -26,7 +26,15 @@ import {
  */
 
 const MAX_TITLE = 120;
-const MAX_BODY = 500;
+/**
+ * Body cap sized for 500 WORDS (~3,500 characters at ~7 chars/word including
+ * spaces), not 500 characters — the admin asked for a 500-word limit and the
+ * original 500-char cap rejected anything past ~80 words. Generous rather
+ * than exact: a hard word count is brittle (hyphens, numbers, non-English
+ * text), and a character ceiling that safely contains 500 words is the same
+ * guarantee without the edge cases.
+ */
+const MAX_BODY = 3500;
 /** History list size — the composer page only ever shows the last screenful. */
 const HISTORY_LIMIT = 50;
 
