@@ -213,7 +213,11 @@ function errText(error) {
 
 /* ------------------------------------------------------------------ settings */
 
-const DEFAULT_SETTINGS = { anonymousMode: true, chatRateLimitPerMin: 20 };
+const DEFAULT_SETTINGS = {
+  anonymousMode: true,
+  chatRateLimitPerMin: 20,
+  complaintSubmissionLimit: 0,
+};
 
 /**
  * Cached mirror of lib/settings.ts, parsed identically (`"true"` is the only
@@ -236,6 +240,10 @@ async function getSettings() {
 
     const anonymousRaw = map.get("anonymousMode");
     const limitRaw = Number.parseInt(map.get("chatRateLimitPerMin") ?? "", 10);
+    const complaintLimitRaw = Number.parseInt(
+      map.get("complaintSubmissionLimit") ?? "",
+      10,
+    );
 
     settingsCache = {
       value: {
@@ -247,6 +255,10 @@ async function getSettings() {
           Number.isFinite(limitRaw) && limitRaw > 0
             ? limitRaw
             : DEFAULT_SETTINGS.chatRateLimitPerMin,
+        complaintSubmissionLimit:
+          Number.isFinite(complaintLimitRaw) && complaintLimitRaw >= 0
+            ? complaintLimitRaw
+            : DEFAULT_SETTINGS.complaintSubmissionLimit,
       },
       readAt: now,
     };

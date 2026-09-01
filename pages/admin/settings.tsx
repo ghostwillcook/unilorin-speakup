@@ -36,6 +36,9 @@ import type { SpeakUpSettings } from "@/lib/settings";
 
 const RATE_MIN = 1;
 const RATE_MAX = 600;
+/** 0 = unlimited; the ceiling is arbitrary but bounded (see saveSettings). */
+const LIMIT_MIN = 0;
+const LIMIT_MAX = 100;
 
 /**
  * Placeholder values for the render before GET /api/settings answers.
@@ -49,6 +52,7 @@ const RATE_MAX = 600;
 const PLACEHOLDER: SpeakUpSettings = {
   anonymousMode: true,
   chatRateLimitPerMin: 20,
+  complaintSubmissionLimit: 0,
 };
 
 interface Props {
@@ -79,6 +83,7 @@ function asSettings(value: unknown): SpeakUpSettings | null {
   if (!isRecord(raw)) return null;
 
   const rate = raw.chatRateLimitPerMin;
+  const limit = raw.complaintSubmissionLimit;
   return {
     anonymousMode:
       typeof raw.anonymousMode === "boolean"
@@ -88,6 +93,10 @@ function asSettings(value: unknown): SpeakUpSettings | null {
       typeof rate === "number" && Number.isFinite(rate) && rate > 0
         ? Math.round(rate)
         : PLACEHOLDER.chatRateLimitPerMin,
+    complaintSubmissionLimit:
+      typeof limit === "number" && Number.isFinite(limit) && limit >= 0
+        ? Math.round(limit)
+        : PLACEHOLDER.complaintSubmissionLimit,
   };
 }
 
@@ -102,6 +111,9 @@ function diff(
   }
   if (form.chatRateLimitPerMin !== saved.chatRateLimitPerMin) {
     patch.chatRateLimitPerMin = form.chatRateLimitPerMin;
+  }
+  if (form.complaintSubmissionLimit !== saved.complaintSubmissionLimit) {
+    patch.complaintSubmissionLimit = form.complaintSubmissionLimit;
   }
   return patch;
 }
@@ -123,6 +135,9 @@ export default function AdminSettings({ user }: Props) {
   /** The raw text of the number field, so a half-typed value is not clobbered. */
   const [rateText, setRateText] = useState(
     String(PLACEHOLDER.chatRateLimitPerMin),
+  );
+  const [limitText, setLimitText] = useState(
+    String(PLACEHOLDER.complaintSubmissionLimit),
   );
   const [nonce, setNonce] = useState(0);
 
@@ -163,6 +178,7 @@ export default function AdminSettings({ user }: Props) {
         setSaved(settings);
         setForm(settings);
         setRateText(String(settings.chatRateLimitPerMin));
+        setLimitText(String(settings.complaintSubmissionLimit));
         setError(null);
         setSetupHint(null);
       } catch {
@@ -225,6 +241,35 @@ export default function AdminSettings({ user }: Props) {
     );
   }, [rateText, saved]);
 
+  // The complaint limit mirrors the rate limit's edit pattern: raw text while
+  // typing, committed value on blur, clamped into the 0..100 range.
+  const changeLimit = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const text = event.target.value;
+      setLimitText(text);
+      touch();
+
+      const parsed = Number.parseInt(text, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) return;
+      setForm((current) => ({ ...current, complaintSubmissionLimit: parsed }));
+    },
+    [touch],
+  );
+
+  const commitLimit = useCallback(() => {
+    const parsed = Number.parseInt(limitText, 10);
+    const next = Number.isFinite(parsed) && parsed >= 0
+      ? Math.min(LIMIT_MAX, parsed)
+      : (saved?.complaintSubmissionLimit ?? PLACEHOLDER.complaintSubmissionLimit);
+
+    setLimitText(String(next));
+    setForm((current) =>
+      current.complaintSubmissionLimit === next
+        ? current
+        : { ...current, complaintSubmissionLimit: next },
+    );
+  }, [limitText, saved]);
+
   const patch = useMemo(
     () => (saved ? diff(saved, form) : {}),
     [form, saved],
@@ -238,6 +283,7 @@ export default function AdminSettings({ user }: Props) {
     if (!saved) return;
     setForm(saved);
     setRateText(String(saved.chatRateLimitPerMin));
+    setLimitText(String(saved.complaintSubmissionLimit));
     setConfirmation(null);
     setError(null);
   }, [saved]);
@@ -291,11 +337,20 @@ export default function AdminSettings({ user }: Props) {
       setSaved(settings);
       setForm(settings);
       setRateText(String(settings.chatRateLimitPerMin));
+      setLimitText(String(settings.complaintSubmissionLimit));
       setSetupHint(null);
       setConfirmation(
         settings.anonymousMode
-          ? `Settings saved. Anonymous mode is on and the chat limit is ${settings.chatRateLimitPerMin} messages per minute.`
-          : `Settings saved. Anonymous mode is off — the global chat now shows students' real names — and the limit is ${settings.chatRateLimitPerMin} messages per minute.`,
+          ? `Settings saved. Anonymous mode is on, the chat limit is ${settings.chatRateLimitPerMin}/min, and the complaint limit is ${
+              settings.complaintSubmissionLimit === 0
+                ? "unlimited"
+                : settings.complaintSubmissionLimit
+            }.`
+          : `Settings saved. Anonymous mode is off — the global chat now shows students' real names — chat limit ${settings.chatRateLimitPerMin}/min, complaint limit ${
+              settings.complaintSubmissionLimit === 0
+                ? "unlimited"
+                : settings.complaintSubmissionLimit
+            }.`,
       );
     } catch {
       setError("Could not reach the server. Settings were not saved.");
@@ -474,6 +529,46 @@ export default function AdminSettings({ user }: Props) {
               <p className="mt-2 text-sm text-warn">
                 Values outside {RATE_MIN}–{RATE_MAX} are clamped into range when
                 saved.
+              </p>
+            )}
+          </div>
+        </GlassCard>
+
+        <GlassCard className="mb-5 overflow-hidden">
+          <PanelHeader
+            title="Complaint submission limit"
+            subtitle="How many complaints one student may have open at once."
+          />
+
+          <div className="px-5 py-5">
+            <label className="field-label" htmlFor="complaint-limit">
+              Open complaints per student
+            </label>
+            <input
+              id="complaint-limit"
+              type="number"
+              inputMode="numeric"
+              className="field max-w-[10rem]"
+              min={LIMIT_MIN}
+              max={LIMIT_MAX}
+              step={1}
+              value={limitText}
+              onChange={changeLimit}
+              onBlur={commitLimit}
+              disabled={disabled}
+              aria-describedby="complaint-limit-help"
+            />
+            <p id="complaint-limit-help" className="mt-2 text-sm text-muted">
+              A student with this many complaints still under review (Pending
+              or In review) cannot submit another until one is resolved or
+              rejected. Set to <strong className="font-semibold">0</strong> for
+              unlimited — the default. Takes effect on the next submission
+              attempt; no restart is needed.
+            </p>
+            {form.complaintSubmissionLimit === 0 && (
+              <p className="mt-2 text-sm text-info">
+                Currently unlimited: students may have as many open complaints
+                as they like.
               </p>
             )}
           </div>

@@ -21,7 +21,11 @@ import {
  * return 200 with the old value, which reads as "saved" in the UI.
  */
 
-const ALLOWED_KEYS = ["anonymousMode", "chatRateLimitPerMin"] as const;
+const ALLOWED_KEYS = [
+  "anonymousMode",
+  "chatRateLimitPerMin",
+  "complaintSubmissionLimit",
+] as const;
 const ALLOWED = new Set<string>(ALLOWED_KEYS);
 
 export default async function handler(
@@ -76,6 +80,16 @@ export default async function handler(
         .json({ error: "`chatRateLimitPerMin` must be a number." });
     }
     patch.chatRateLimitPerMin = value;
+  }
+
+  if ("complaintSubmissionLimit" in body) {
+    const value = body.complaintSubmissionLimit;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return res.status(400).json({
+        error: "`complaintSubmissionLimit` must be a non-negative number (0 = unlimited).",
+      });
+    }
+    patch.complaintSubmissionLimit = value;
   }
 
   // An empty body is the same failure as a typo'd key: nothing would be

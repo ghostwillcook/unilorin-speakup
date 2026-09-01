@@ -624,6 +624,7 @@ async function seedSettings(): Promise<void> {
   const defaults: Array<[string, string]> = [
     ["anonymousMode", "true"],
     ["chatRateLimitPerMin", "20"],
+    ["complaintSubmissionLimit", "0"],
   ];
 
   for (const [key, value] of defaults) {

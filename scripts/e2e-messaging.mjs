@@ -428,6 +428,86 @@ async function main() {
     `got ${notifAsStudent.status}`,
   );
 
+  /* ---------------- 9. settings + complaint submission limit ---------------- */
+
+  // The settings object is admin-only; complaintSubmissionLimit gates how
+  // many OPEN (PENDING / IN_REVIEW) complaints a student may have, 0 = no cap.
+  const settingsBefore = await call(admin, "/api/settings");
+  check(
+    "settings expose complaintSubmissionLimit (default 0 = unlimited)",
+    settingsBefore.body?.settings?.complaintSubmissionLimit === 0,
+    `value=${settingsBefore.body?.settings?.complaintSubmissionLimit}`,
+  );
+
+  const setLimit = await call(admin, "/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({ complaintSubmissionLimit: 1 }),
+  });
+  check(
+    "admin sets complaintSubmissionLimit=1",
+    setLimit.status === 200 &&
+      setLimit.body?.settings?.complaintSubmissionLimit === 1,
+    `status=${setLimit.status} value=${setLimit.body?.settings?.complaintSubmissionLimit}`,
+  );
+
+  // The complaint created in section 1 is still PENDING, so student A already
+  // has 1 open complaint — the next submission must be rejected with 429.
+  const overLimit = await call(aisha, "/api/complaints", {
+    method: "POST",
+    body: JSON.stringify({
+      title: "E2E: over the limit",
+      description: "Should be rejected while an open complaint exists.",
+    }),
+  });
+  check(
+    "complaint over the limit rejected with 429",
+    overLimit.status === 429,
+    `got ${overLimit.status}`,
+  );
+  check(
+    "429 copy mentions complaints under review",
+    typeof overLimit.body?.error === "string" &&
+      overLimit.body.error.includes("under review"),
+    JSON.stringify(overLimit.body?.error ?? overLimit.body).slice(0, 120),
+  );
+
+  const badLimit = await call(admin, "/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({ complaintSubmissionLimit: -1 }),
+  });
+  check(
+    "negative limit rejected with 400",
+    badLimit.status === 400,
+    `got ${badLimit.status}`,
+  );
+
+  const resetLimit = await call(admin, "/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({ complaintSubmissionLimit: 0 }),
+  });
+  check(
+    "limit reset to unlimited for later runs",
+    resetLimit.status === 200 &&
+      resetLimit.body?.settings?.complaintSubmissionLimit === 0,
+    `status=${resetLimit.status} value=${resetLimit.body?.settings?.complaintSubmissionLimit}`,
+  );
+
+  /* ---------------- 10. welcome page sign-off ---------------- */
+
+  // /welcome is public — a plain fetch is enough, no session needed.
+  const welcomeRes = await fetch(BASE + "/welcome", { redirect: "manual" });
+  const welcomeHtml = await welcomeRes.text();
+  check(
+    "welcome page renders",
+    welcomeRes.status === 200,
+    `got ${welcomeRes.status}`,
+  );
+  check(
+    "welcome page signed off by Student Affairs, Dean's name removed",
+    welcomeHtml.includes("Student Affairs") && !welcomeHtml.includes("Morenikeji"),
+    "",
+  );
+
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} passed`);
   if (failed.length > 0) process.exitCode = 1;

@@ -205,14 +205,11 @@ export default function WelcomePage() {
                   </div>
                 </Reveal>
 
-                {/* The Dean's sign-off, typeset as the closing of the address. */}
+                {/* Sign-off: the Unit collectively, not an individual's name. */}
                 <Reveal delay={440}>
                   <div className="mt-12 border-t border-white/20 pt-6">
                     <p className="text-sm font-bold text-white/90">
-                      Dr. Morenikeji Alex Akanmu
-                    </p>
-                    <p className="mt-0.5 text-sm italic text-white/60">
-                      Ag. Dean, Student Affairs
+                      Student Affairs
                     </p>
                   </div>
                 </Reveal>

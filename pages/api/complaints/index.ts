@@ -8,6 +8,7 @@ import {
   requireRole,
 } from "@/lib/guards";
 import type { SessionUser } from "@/lib/guards";
+import { getSettings } from "@/lib/settings";
 import { ownsStorageKey, UPLOAD_LIMITS } from "@/lib/supabase";
 import type { ComplaintStatus } from "@/components/StatusBadge";
 
@@ -338,6 +339,29 @@ async function create(
   if (user.role !== "STUDENT") {
     res.status(403).json({ error: "Only students can file complaints." });
     return;
+  }
+
+  // Submission limit: the admin sets a ceiling on how many complaints a
+  // student may have OPEN (PENDING or IN_REVIEW) at once. 0 = unlimited.
+  // Checked BEFORE validation so a limit-blocked student gets the limit
+  // message rather than a title-length complaint they can never submit.
+  const { complaintSubmissionLimit } = await getSettings();
+  if (complaintSubmissionLimit > 0) {
+    const openCount = await prisma.complaint.count({
+      where: {
+        userId: user.id,
+        status: { in: ["PENDING", "IN_REVIEW"] },
+      },
+    });
+    if (openCount >= complaintSubmissionLimit) {
+      res.status(429).json({
+        error: `You already have ${openCount} complaint${
+          openCount === 1 ? "" : "s"
+        } under review. The current limit is ${complaintSubmissionLimit}. ` +
+          "Please wait for a response before submitting more.",
+      });
+      return;
+    }
   }
 
   const body = asRecord(req.body as unknown);

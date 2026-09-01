@@ -12,16 +12,25 @@ export interface SpeakUpSettings {
   anonymousMode: boolean;
   /** Messages one student may send per minute in the global room. */
   chatRateLimitPerMin: number;
+  /**
+   * How many complaints a student may have open (PENDING or IN_REVIEW)
+   * before the system refuses new submissions. 0 = unlimited. The admin
+   * sets this in /admin/settings; it exists so a student cannot flood the
+   * queue while earlier complaints are still being worked.
+   */
+  complaintSubmissionLimit: number;
 }
 
 export const DEFAULT_SETTINGS: SpeakUpSettings = {
   anonymousMode: true,
   chatRateLimitPerMin: 20,
+  complaintSubmissionLimit: 0,
 };
 
 export const SETTING_KEYS = {
   anonymousMode: "anonymousMode",
   chatRateLimitPerMin: "chatRateLimitPerMin",
+  complaintSubmissionLimit: "complaintSubmissionLimit",
 } as const;
 
 /** Reads settings, falling back to defaults for missing rows or no database. */
@@ -40,6 +49,10 @@ export async function getSettings(): Promise<SpeakUpSettings> {
       chatRateLimitPerMin: parseInt_(
         map.get(SETTING_KEYS.chatRateLimitPerMin),
         DEFAULT_SETTINGS.chatRateLimitPerMin,
+      ),
+      complaintSubmissionLimit: parseIntAllowZero(
+        map.get(SETTING_KEYS.complaintSubmissionLimit),
+        DEFAULT_SETTINGS.complaintSubmissionLimit,
       ),
     };
   } catch {
@@ -61,6 +74,13 @@ export async function saveSettings(
     const n = Math.max(1, Math.min(600, Math.round(patch.chatRateLimitPerMin)));
     entries.push([SETTING_KEYS.chatRateLimitPerMin, String(n)]);
   }
+  if (typeof patch.complaintSubmissionLimit === "number") {
+    // 0 means unlimited; the ceiling is generous but bounded so the settings
+    // UI can never be used to brick complaint submission with a typo'd
+    // negative or a scientific-notation million.
+    const n = Math.max(0, Math.min(100, Math.round(patch.complaintSubmissionLimit)));
+    entries.push([SETTING_KEYS.complaintSubmissionLimit, String(n)]);
+  }
 
   for (const [key, value] of entries) {
     await prisma.setting.upsert({
@@ -80,4 +100,11 @@ function parseBool(raw: string | undefined, fallback: boolean): boolean {
 function parseInt_(raw: string | undefined, fallback: number): number {
   const n = Number.parseInt(raw ?? "", 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Like parseInt_ but accepts 0 (the "unlimited" sentinel for the
+ *  complaint limit — it is a meaningful value, not a fallback case). */
+function parseIntAllowZero(raw: string | undefined, fallback: number): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
