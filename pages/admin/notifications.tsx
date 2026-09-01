@@ -33,17 +33,10 @@ import { useSocket } from "@/lib/socket-client";
  * broadcast to 300 students is 300 identical rows. See groupHistory below for
  * how they are collapsed back into one entry per send.
  */
-
-/** Mirrors the API route's own limits (pages/api/admin/notifications.ts).
- *  Body is 3500 characters (~500 words) — see the route's MAX_BODY note. */
-const MAX_TITLE = 120;
-const MAX_BODY = 3500;
-/**
- * Char counters stay hidden until the field is this close to its limit — a
- * live "n/500" from the first keystroke is noise, but the admin should see the
- * ceiling coming before the input silently stops accepting text.
- */
-const COUNTER_WINDOW = 20;
+// No length caps on title or body — the API route, the socket server, and
+// this composer all agree: the admin is the trusted author and the Postgres
+// TEXT column is unlimited. Only non-empty is validated (client-side here,
+// server-side in both write paths).
 /**
  * The socket send is fire-and-forget, so "no answer" has to eventually mean
  * something. 30s is generous: the server pushes to every subscription of
@@ -172,20 +165,9 @@ function groupHistory(rows: NotificationRow[]): HistoryEntry[] {
   return entries;
 }
 
-/** The char counter beside a field's label — rendered only near the limit. */
-function CharCount({ value, max }: { value: number; max: number }) {
-  if (max - value > COUNTER_WINDOW) return null;
-  const remaining = max - value;
-  return (
-    <span
-      className={`ml-auto self-baseline font-normal normal-case tracking-normal ${
-        remaining <= 10 ? "text-warn" : ""
-      }`}
-    >
-      {value}/{max}
-    </span>
-  );
-}
+// CharCount is gone with the length caps: with no ceiling there is nothing
+// to count down to, and a live character count on an unlimited field is
+// noise without information.
 
 export default function AdminNotificationsPage() {
   const { socket, status } = useSocket(true);
@@ -515,19 +497,17 @@ export default function AdminNotificationsPage() {
             >
               <div>
                 <label
-                  className="field-label flex items-center gap-2"
+                  className="field-label"
                   htmlFor="notification-title"
                 >
                   Title
-                  <CharCount value={title.length} max={MAX_TITLE} />
                 </label>
                 <input
                   id="notification-title"
                   type="text"
                   className="field"
                   value={title}
-                  onChange={(event) => setTitle(event.target.value.slice(0, MAX_TITLE))}
-                  maxLength={MAX_TITLE}
+                  onChange={(event) => setTitle(event.target.value)}
                   placeholder="e.g. Resumption date update"
                   autoComplete="off"
                 />
@@ -535,21 +515,17 @@ export default function AdminNotificationsPage() {
 
               <div>
                 <label
-                  className="field-label flex items-center gap-2"
+                  className="field-label"
                   htmlFor="notification-body"
                 >
                   Message
-                  <CharCount value={body.length} max={MAX_BODY} />
                 </label>
-                {/* rows=8 gives a 500-word message room to breathe — at
-                    rows=5 the admin composes blind in a tiny scroll box. */}
                 <textarea
                   id="notification-body"
                   className="textarea"
                   rows={8}
                   value={body}
-                  onChange={(event) => setBody(event.target.value.slice(0, MAX_BODY))}
-                  maxLength={MAX_BODY}
+                  onChange={(event) => setBody(event.target.value)}
                   placeholder="What every recipient should read…"
                 />
               </div>

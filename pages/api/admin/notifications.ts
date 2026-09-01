@@ -25,16 +25,14 @@ import {
  * students pick the row up from /api/notifications.
  */
 
-const MAX_TITLE = 120;
 /**
- * Body cap sized for 500 WORDS (~3,500 characters at ~7 chars/word including
- * spaces), not 500 characters — the admin asked for a 500-word limit and the
- * original 500-char cap rejected anything past ~80 words. Generous rather
- * than exact: a hard word count is brittle (hyphens, numbers, non-English
- * text), and a character ceiling that safely contains 500 words is the same
- * guarantee without the edge cases.
+ * No length caps on title or body: the admin is the trusted author and the
+ * Postgres TEXT column is unlimited. The only validation is non-empty —
+ * a broadcast with a blank field is a mistake, not a policy decision. (An
+ * earlier version capped these at 120/3500 chars; the admin asked for the
+ * ceiling removed entirely, so it is gone from here, the socket twin, and
+ * the composer UI.)
  */
-const MAX_BODY = 3500;
 /** History list size — the composer page only ever shows the last screenful. */
 const HISTORY_LIMIT = 50;
 
@@ -152,20 +150,8 @@ async function send(
     res.status(400).json({ error: "A title is required." });
     return;
   }
-  if (title.length > MAX_TITLE) {
-    res
-      .status(400)
-      .json({ error: `Title must be ${MAX_TITLE} characters or fewer.` });
-    return;
-  }
   if (message.length === 0) {
     res.status(400).json({ error: "A message is required." });
-    return;
-  }
-  if (message.length > MAX_BODY) {
-    res
-      .status(400)
-      .json({ error: `Message must be ${MAX_BODY} characters or fewer.` });
     return;
   }
 

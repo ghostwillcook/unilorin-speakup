@@ -1065,17 +1065,9 @@ async function handleNotificationSend(socket, payload) {
       });
       return;
     }
-    // Same caps as the REST twin (pages/api/admin/notifications.ts): the two
-    // paths write the same rows and must accept the same input, and an
-    // over-sized broadcast would fan out per student before failing per push.
-    // Body cap is 3500 chars (~500 words) — see the REST twin's MAX_BODY note.
-    if (title.length > 120 || body.length > 3500) {
-      socket.emit("chat:error", {
-        message:
-          "Keep the title to 120 characters and the message to 500 words.",
-      });
-      return;
-    }
+    // No length caps — same policy as the REST twin
+    // (pages/api/admin/notifications.ts): the admin is the trusted author,
+    // the Postgres TEXT column is unlimited, and only non-empty is checked.
 
     // Rate-limit by the ADMIN's id: broadcast fan-out is expensive (a row +
     // push per student), so an admin's runaway script must not hammer it.
