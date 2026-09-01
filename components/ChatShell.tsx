@@ -77,7 +77,13 @@ export default function ChatShell({
   return (
     <section
       aria-label={title}
-      className={`surface flex flex-col overflow-hidden fixed inset-x-0 bottom-0 top-0 z-20 rounded-none border-0 pb-[calc(64px+env(safe-area-inset-bottom,0px))] md:relative md:inset-auto md:z-auto md:h-[34rem] md:max-h-[78vh] md:rounded-2xl md:border md:pb-0 ${className}`}
+      // On mobile the shell owns the viewport (fixed inset-0), so it must be
+      // OPAQUE — the .surface class is translucent glass designed for desktop
+      // in-page panels, and through it the underlying section content bleeds
+      // through as a ghost "Page A under Page B" underlay. bg-canvas (solid
+      // white) on mobile, the glass .surface on desktop where the shell is a
+      // floating card and translucency is the point.
+      className={`flex flex-col overflow-hidden fixed inset-x-0 bottom-0 top-0 z-20 rounded-none border-0 bg-canvas pb-[calc(64px+env(safe-area-inset-bottom,0px))] md:relative md:inset-auto md:z-auto md:h-[34rem] md:max-h-[78vh] md:rounded-2xl md:border md:bg-transparent md:pb-0 md:shadow-[0_24px_48px_rgb(16_2_111/0.08)] ${className}`}
     >
       <header className="flex items-center gap-2 border-b border-line bg-canvas px-3 py-2.5 md:bg-transparent md:px-5 md:py-4">
         {onBack && (

@@ -186,13 +186,24 @@ export default function AdminDashboard({ user }: Props) {
 
   /* Semantic hues only — warn/info/danger are the tokens status already uses in
      badges, so a tile and its badge never disagree. Everything neutral stays
-     paper; the ember is reserved for the live indicator. */
-  const tiles: Array<{ label: string; value: number; tone: string }> = [
-    { label: "Total", value: view.total, tone: "text-graphite" },
-    { label: "Pending", value: view.pending, tone: "text-warn" },
-    { label: "In review", value: view.inReview, tone: "text-info" },
-    { label: "Resolved", value: view.resolved, tone: "text-graphite" },
-    { label: "Rejected", value: view.rejected, tone: "text-danger" },
+     paper; the ember is reserved for the live indicator.
+
+     href turns the first five tiles into navigation shortcuts: tapping
+     "Pending" opens the complaints queue pre-filtered to pending, per the
+     admin spec. The Students tile has no destination (there is no
+     students-filtered complaint list), so it renders as a static card —
+     `undefined` href means "not a link". */
+  const tiles: Array<{
+    label: string;
+    value: number;
+    tone: string;
+    href?: string;
+  }> = [
+    { label: "Total", value: view.total, tone: "text-graphite", href: "/admin/complaints" },
+    { label: "Pending", value: view.pending, tone: "text-warn", href: "/admin/complaints?status=PENDING" },
+    { label: "In review", value: view.inReview, tone: "text-info", href: "/admin/complaints?status=IN_REVIEW" },
+    { label: "Resolved", value: view.resolved, tone: "text-graphite", href: "/admin/complaints?status=RESOLVED" },
+    { label: "Rejected", value: view.rejected, tone: "text-danger", href: "/admin/complaints?status=REJECTED" },
     { label: "Students", value: view.students, tone: "text-graphite" },
   ];
 
@@ -249,26 +260,52 @@ export default function AdminDashboard({ user }: Props) {
       )}
 
       {/* Stagger assembles the row one tile at a time; each child becomes the
-          grid item, so the tiles need h-full to fill a stretched cell. */}
+          grid item, so the tiles need h-full to fill a stretched cell.
+          Tiles with an href are links (navigation shortcuts to the filtered
+          complaint queue); the rest stay static cards. */}
       <section aria-label="Complaint totals">
         <Stagger
           step={60}
           className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
         >
-          {tiles.map((tile) => (
-            <GlassCard key={tile.label} hover className="h-full px-4 py-5">
-              <p
-                className={`font-display text-[2rem] font-bold leading-none tracking-tight tabular-nums sm:text-[2.5rem] ${
-                  hasStats ? tile.tone : "text-muted/40"
-                }`}
+          {tiles.map((tile) =>
+            tile.href ? (
+              <Link
+                key={tile.label}
+                href={tile.href}
+                // The same glass card, but as a focusable link: cursor-pointer
+                // and a keyboard-accessible tap target. GlassCard's `hover`
+                // prop already provides the lift-on-hover; the link adds the
+                // pressed feedback through the browser's default :active.
+                className="surface surface-hover block h-full cursor-pointer rounded-2xl px-4 py-5 transition-transform duration-200 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 active:translate-y-0"
+                aria-label={`${tile.label} complaints: ${tile.value}`}
               >
-                {hasStats ? tile.value.toLocaleString() : "—"}
-              </p>
-              <p className="mt-3 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted">
-                {tile.label}
-              </p>
-            </GlassCard>
-          ))}
+                <p
+                  className={`font-display text-[2rem] font-bold leading-none tracking-tight tabular-nums sm:text-[2.5rem] ${
+                    hasStats ? tile.tone : "text-muted/40"
+                  }`}
+                >
+                  {hasStats ? tile.value.toLocaleString() : "—"}
+                </p>
+                <p className="mt-3 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted">
+                  {tile.label}
+                </p>
+              </Link>
+            ) : (
+              <GlassCard key={tile.label} hover className="h-full px-4 py-5">
+                <p
+                  className={`font-display text-[2rem] font-bold leading-none tracking-tight tabular-nums sm:text-[2.5rem] ${
+                    hasStats ? tile.tone : "text-muted/40"
+                  }`}
+                >
+                  {hasStats ? tile.value.toLocaleString() : "—"}
+                </p>
+                <p className="mt-3 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted">
+                  {tile.label}
+                </p>
+              </GlassCard>
+            ),
+          )}
         </Stagger>
       </section>
 

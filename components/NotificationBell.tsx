@@ -52,7 +52,9 @@ interface StudentNotification {
 
 type PushState = "idle" | "on" | "failed";
 
-/** One on-screen popup toast, derived from a notification:new event. */
+/** One blocking notification overlay, derived from a notification:new event.
+ *  Unlike the old auto-dismissing toasts, these REQUIRE the user to press
+ *  Continue — no timeout, no passive dismissal. */
 interface ToastEntry {
   id: string;
   title: string;
@@ -60,12 +62,10 @@ interface ToastEntry {
   createdAt: string;
 }
 
-/** How long a toast stays on screen before closing itself. */
-const TOAST_MS = 8000;
-/** Cap on stacked toasts — a burst of five drops the oldest two rather than
- *  filling the viewport. Three feels like "you have things to read"; five
- *  feels like a takeover. */
-const TOAST_CAP = 3;
+// No auto-dismiss timer: the spec requires explicit user interaction ("the
+// user must press Continue"). Multiple notifications queue sequentially —
+// Notification 1 → Continue → Notification 2 → Continue — so the overlay
+// never stacks; only the head of the queue is rendered.
 
 // Monotonic counter for provisional notification:new rows. Date.now() alone
 // collides when two events land in the same millisecond (duplicate keys in
@@ -118,8 +118,9 @@ export default function NotificationBell({
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loaded, setLoaded] = useState(false);
-  // Portal-mounted popup cards: one per recent notification:new, each with its
-  // own dismissal (Close button or the TOAST_MS timer).
+  // The blocking overlay queue: notifications arrive here and display ONE at
+  // a time (the head of the array). No auto-dismiss — the Continue button
+  // pops the head, which either reveals the next or clears the overlay.
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
 
   // Web Push support can only be probed in the browser, so it starts "no" and
@@ -137,28 +138,13 @@ export default function NotificationBell({
 
   const userId = session?.user?.id ?? null;
 
-  // Removes one toast — the Close button's handler. The auto-dismiss sweep
-  // below uses the same state setter on a timer.
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  // Removes the HEAD toast (the Continue button's handler) — sequential queue
+  // semantics: dismissing one reveals the next, or clears the overlay when
+  // the queue empties. The bell's history is untouched; the notification row
+  // is already persisted server-side.
+  const dismissToast = useCallback(() => {
+    setToasts((prev) => prev.slice(1));
   }, []);
-
-  // Auto-dismiss: a single timer keyed on the toast list, resetting whenever a
-  // new toast arrives (each gets a fresh TOAST_MS window from that point).
-  // The sweep parses the timestamp back out of the id (`toast-<ms>-<seq>`).
-  useEffect(() => {
-    if (toasts.length === 0) return;
-    const timer = window.setTimeout(() => {
-      const cutoff = Date.now() - TOAST_MS;
-      setToasts((prev) =>
-        prev.filter((t) => {
-          const stamp = Number.parseInt(t.id.split("-")[1] ?? "0", 10);
-          return Number.isNaN(stamp) || stamp > cutoff;
-        }),
-      );
-    }, TOAST_MS);
-    return () => window.clearTimeout(timer);
-  }, [toasts]);
 
   /* ---------------------------------------------------------------- load */
 
@@ -225,21 +211,19 @@ export default function NotificationBell({
       setNotifications((prev) => [provisional, ...prev]);
       setUnread((count) => count + 1);
 
-      // Popup toast — same content, own id so the Close button can target it
-      // independently of the badge row. The timestamp suffix doubles as the
-      // expiry key for the auto-dismiss sweep.
-      setToasts((prev) => {
-        const next: ToastEntry[] = [
-          {
-            id: `toast-${Date.now()}-${provisionalSeq}`,
-            title: provisional.title,
-            body: provisional.body,
-            createdAt: provisional.createdAt,
-          },
-          ...prev,
-        ];
-        return next.slice(0, TOAST_CAP);
-      });
+      // Blocking overlay — pushed to the queue; the head displays as a
+      // full-screen modal requiring Continue. No cap: a burst queues and
+      // shows sequentially, per the spec ("Notification 1 → Continue →
+      // Notification 2 → Continue → App").
+      setToasts((prev) => [
+        ...prev,
+        {
+          id: `toast-${Date.now()}-${provisionalSeq}`,
+          title: provisional.title,
+          body: provisional.body,
+          createdAt: provisional.createdAt,
+        },
+      ]);
 
       void load();
     }
@@ -393,62 +377,83 @@ export default function NotificationBell({
         )}
       </button>
 
-      {/* Popup toasts: portaled to document.body so they escape the header's
-          z-20 stacking context entirely. Fixed bottom-right on desktop,
-          bottom-center on mobile (above the dock's 64px + safe-area). Each
-          card carries the notification's title and body with a Close button;
-          auto-dismisses after TOAST_MS. */}
+      {/* Blocking notification overlay: portaled to document.body so it
+          escapes the header's z-20 stacking context. A full-screen dimmed
+          modal — only the HEAD of the queue renders (sequential display, per
+          the spec). The user must press Continue; nothing auto-dismisses and
+          nothing behind the overlay is interactive while it is up. */}
       {toasts.length > 0 &&
         createPortal(
           <div
-            aria-live="polite"
-            className="pointer-events-none fixed inset-x-4 bottom-[calc(80px+env(safe-area-inset-bottom,0px))] z-50 flex flex-col items-center gap-2 md:inset-x-auto md:right-6 md:bottom-6 md:items-end"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label={toasts[0].title}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           >
-            {toasts.map((toast) => (
-              <div
-                key={toast.id}
-                // pointer-events re-enabled on the card itself (the wrapper
-                // is pointer-events-none so taps pass through the gaps
-                // between stacked toasts to the page underneath).
-                className="pointer-events-auto w-full max-w-sm rounded-2xl border border-line bg-white px-4 py-3.5 shadow-[0_24px_48px_rgb(0_0_0/0.18)]"
-                role="status"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-graphite">
-                      {toast.title}
-                    </p>
-                    <p className="mt-1 text-sm leading-relaxed text-muted">
-                      {toast.body}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => dismissToast(toast.id)}
-                    aria-label="Close notification"
-                    className="btn-icon -mr-1 -mt-1 h-7 w-7 shrink-0 rounded-full text-muted"
+            {/* The card: centered, max-w for readability, solid white so the
+                dimmed app behind reads as "paused" rather than bleeding
+                through. Rounded glass consistent with the app's card
+                language. */}
+            <div className="mx-4 w-full max-w-md rounded-3xl border border-line bg-white px-7 py-8 shadow-[0_32px_64px_rgb(0_0_0/0.3)] sm:px-9 sm:py-10">
+              {/* Notification icon — a small bell in the app's accent, so the
+                  card reads as "notification" at a glance rather than as an
+                  error or a generic modal. */}
+              <div className="flex justify-center">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-accent/10">
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-accent"
+                    aria-hidden="true"
                   >
-                    <svg
-                      width="13"
-                      height="13"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M6 6l12 12M18 6L6 18"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        fill="none"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <p className="mt-2 text-right text-[0.6875rem] text-muted/60">
-                  {dateTimeLabel(toast.createdAt)}
-                </p>
+                    <path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5Z" />
+                    <path d="M10.3 19.5a2 2 0 0 0 3.4 0" />
+                  </svg>
+                </span>
               </div>
-            ))}
+
+              {/* Title + body — the notification's content, clearly readable,
+                  generous sizing for a phone held at arm's length. */}
+              <h3 className="mt-5 text-center text-lg font-bold text-graphite sm:text-xl">
+                {toasts[0].title}
+              </h3>
+              <p className="mt-3 text-center text-sm leading-relaxed text-muted sm:text-base">
+                {toasts[0].body}
+              </p>
+
+              <p className="mt-4 text-center text-[0.6875rem] text-muted/60">
+                {dateTimeLabel(toasts[0].createdAt)}
+              </p>
+
+              {/* Queue indicator — only shows when more notifications are
+                  waiting, so the user knows pressing Continue reveals
+                  another rather than returning to the app. */}
+              {toasts.length > 1 && (
+                <p className="mt-3 text-center text-xs font-medium text-muted/70">
+                  {toasts.length - 1} more notification
+                  {toasts.length - 1 === 1 ? "" : "s"} after this
+                </p>
+              )}
+
+              {/* Continue — the only dismissal. Large pill, full-width on
+                  mobile for an easy thumb target; the app's accent fill so it
+                  reads as the primary action. */}
+              <div className="mt-7">
+                <button
+                  type="button"
+                  onClick={dismissToast}
+                  className="w-full rounded-full bg-accent px-6 py-3.5 text-base font-bold text-white shadow-[0_16px_32px_rgb(194_65_12/0.3)] transition-all duration-150 hover:bg-accent-deep hover:shadow-[0_20px_40px_rgb(194_65_12/0.4)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
           </div>,
           document.body,
         )}

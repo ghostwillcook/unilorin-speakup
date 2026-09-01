@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { GetServerSideProps } from "next";
+import { useRouter } from "next/router";
 
 import AdminLayout from "@/components/AdminLayout";
 import GlassCard, { EmptyState, PanelHeader } from "@/components/GlassCard";
@@ -203,6 +204,8 @@ function fileLabel(key: string, index: number): string {
 /* ------------------------------------------------------------------------- */
 
 export default function AdminComplaintsPage({ user }: Props) {
+  const router = useRouter();
+
   /* Filters. `search` is what the admin is typing; `q` is what the request
      uses. They converge DEBOUNCE_MS after the last keystroke. */
   const [search, setSearch] = useState("");
@@ -231,6 +234,19 @@ export default function AdminComplaintsPage({ user }: Props) {
     const timer = setTimeout(() => setQ(search), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [search, q]);
+
+  // Deep-link the status filter: the dashboard's status cards navigate here
+  // with ?status=PENDING (etc.), and this applies it on arrival — the admin
+  // should land on a pre-filtered queue, not have to select the filter
+  // themselves. Runs on mount and on every query change (back/forward
+  // navigation between filtered views re-applies the filter).
+  useEffect(() => {
+    const raw = router.query.status;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (!value) return;
+    const status = toStatus(value);
+    if (status) setStatusFilter(status);
+  }, [router.query.status]);
 
   // Single owner of the list request. Any filter change tears down the previous
   // one, so responses can never arrive out of order.
