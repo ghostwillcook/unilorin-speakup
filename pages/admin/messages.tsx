@@ -709,7 +709,7 @@ export default function AdminMessagesPage() {
   return (
     <>
       <Head>
-        <title>Messages · SpeakUp Admin</title>
+        <title>Messages · Student Connect Admin</title>
       </Head>
 
       <AdminLayout

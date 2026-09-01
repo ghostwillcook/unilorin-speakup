@@ -172,7 +172,7 @@ export default function SignInPage() {
   return (
     <>
       <Head>
-        <title>Sign in · UNILORIN SpeakUp</title>
+        <title>Sign in · UNILORIN Student Connect</title>
       </Head>
 
       {/* The auth spec's canvas: soft off-white, the 480px elevated card

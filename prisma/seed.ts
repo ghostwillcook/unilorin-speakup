@@ -1,5 +1,5 @@
 /**
- * UNILORIN SpeakUp — database seed.
+ * UNILORIN Student Connect — database seed.
  *
  * Run with `npm run seed` (tsx). Two consequences of running outside Next shape
  * this whole file:
@@ -709,7 +709,7 @@ function printCredentials(): void {
 /* ---------------------------------------------------------------------- main */
 
 async function main(): Promise<void> {
-  console.log("\n  UNILORIN SpeakUp — seeding database\n");
+  console.log("\n  UNILORIN Student Connect — seeding database\n");
 
   const users = await seedAccounts();
 

@@ -442,7 +442,7 @@ export default function AdminNotificationsPage() {
   return (
     <>
       <Head>
-        <title>Notifications · SpeakUp Admin</title>
+        <title>Notifications · Student Connect Admin</title>
       </Head>
 
       <AdminLayout

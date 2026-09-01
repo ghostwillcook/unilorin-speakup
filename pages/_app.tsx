@@ -10,7 +10,7 @@ export default function App({
   return (
     <SessionProvider session={session}>
       <Head>
-        <title>UNILORIN SpeakUp</title>
+        <title>UNILORIN Student Connect</title>
         <meta
           name="description"
           content="Anonymous complaint and chat platform for the University of Ilorin Student Affairs Unit."

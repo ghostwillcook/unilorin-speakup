@@ -14,7 +14,7 @@ import type { SessionUser } from "@/lib/guards";
 import { dateTimeLabel } from "@/lib/pseudonym";
 
 /**
- * The admin complaint queue — the one screen in SpeakUp that deliberately
+ * The admin complaint queue — the one screen in Student Connect that deliberately
  * de-anonymises.
  *
  * Public chat is pseudonymous by design, but a complaint is a formal record the

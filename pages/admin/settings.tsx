@@ -12,7 +12,7 @@ import type { SessionUser } from "@/lib/guards";
 // Next strips imports used solely by getServerSideProps — but anything the
 // component body touches ships to the browser, so no value may be imported from
 // there. The interface is erased at compile time and costs the bundle nothing.
-import type { SpeakUpSettings } from "@/lib/settings";
+import type { StudentConnectSettings } from "@/lib/settings";
 
 /**
  * Runtime settings for the platform.
@@ -49,7 +49,7 @@ const LIMIT_MAX = 100;
  * established a baseline, so a placeholder can never be written back as if it
  * were a real setting.
  */
-const PLACEHOLDER: SpeakUpSettings = {
+const PLACEHOLDER: StudentConnectSettings = {
   anonymousMode: true,
   chatRateLimitPerMin: 20,
   complaintSubmissionLimit: 0,
@@ -78,7 +78,7 @@ function readField(value: unknown, key: string): string | null {
  * field must not blank a control — an empty box looks like a real value and
  * could be saved back as one.
  */
-function asSettings(value: unknown): SpeakUpSettings | null {
+function asSettings(value: unknown): StudentConnectSettings | null {
   const raw = isRecord(value) ? value.settings : null;
   if (!isRecord(raw)) return null;
 
@@ -102,10 +102,10 @@ function asSettings(value: unknown): SpeakUpSettings | null {
 
 /** Only the keys that differ from the saved baseline. */
 function diff(
-  saved: SpeakUpSettings,
-  form: SpeakUpSettings,
-): Partial<SpeakUpSettings> {
-  const patch: Partial<SpeakUpSettings> = {};
+  saved: StudentConnectSettings,
+  form: StudentConnectSettings,
+): Partial<StudentConnectSettings> {
+  const patch: Partial<StudentConnectSettings> = {};
   if (form.anonymousMode !== saved.anonymousMode) {
     patch.anonymousMode = form.anonymousMode;
   }
@@ -122,9 +122,9 @@ function diff(
 
 export default function AdminSettings({ user }: Props) {
   /** What the server last confirmed. The dirty check compares against this. */
-  const [saved, setSaved] = useState<SpeakUpSettings | null>(null);
+  const [saved, setSaved] = useState<StudentConnectSettings | null>(null);
   /** What the controls show. */
-  const [form, setForm] = useState<SpeakUpSettings>(PLACEHOLDER);
+  const [form, setForm] = useState<StudentConnectSettings>(PLACEHOLDER);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

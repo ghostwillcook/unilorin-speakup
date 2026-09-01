@@ -55,10 +55,10 @@ export default function WelcomePage() {
   return (
     <>
       <Head>
-        <title>Welcome · UNILORIN SpeakUp</title>
+        <title>Welcome · UNILORIN Student Connect</title>
         <meta
           name="description"
-          content="Welcome to the 2026/2027 Academic Session. Every student deserves to be heard. Sign in to SpeakUp."
+          content="Welcome to the 2026/2027 Academic Session. Every student deserves to be heard. Sign in to Student Connect."
         />
       </Head>
 

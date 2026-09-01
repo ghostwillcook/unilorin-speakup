@@ -30,7 +30,7 @@ export default function AdminLayout({
   return (
     <>
       <Head>
-        <title>{`${title} · SpeakUp Admin`}</title>
+        <title>{`${title} · Student Connect Admin`}</title>
       </Head>
 
       <AdminSidebar />

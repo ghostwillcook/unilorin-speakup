@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSettings, saveSettings } from "@/lib/settings";
-import type { SpeakUpSettings } from "@/lib/settings";
+import type { StudentConnectSettings } from "@/lib/settings";
 import {
   guarded,
   methodNotAllowed,
@@ -60,7 +60,7 @@ export default async function handler(
     });
   }
 
-  const patch: Partial<SpeakUpSettings> = {};
+  const patch: Partial<StudentConnectSettings> = {};
 
   if ("anonymousMode" in body) {
     const value = body.anonymousMode;

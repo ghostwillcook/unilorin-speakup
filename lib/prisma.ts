@@ -11,7 +11,7 @@ import { PrismaClient } from "@prisma/client";
  */
 
 const globalForPrisma = globalThis as unknown as {
-  __speakupPrisma?: PrismaClient;
+  __studentConnectPrisma?: PrismaClient;
 };
 
 export class DbNotConfiguredError extends Error {
@@ -33,15 +33,15 @@ export function isDbConfigured(): boolean {
 export function getPrisma(): PrismaClient {
   if (!isDbConfigured()) throw new DbNotConfiguredError();
 
-  if (!globalForPrisma.__speakupPrisma) {
-    globalForPrisma.__speakupPrisma = new PrismaClient({
+  if (!globalForPrisma.__studentConnectPrisma) {
+    globalForPrisma.__studentConnectPrisma = new PrismaClient({
       log:
         process.env.NODE_ENV === "development"
           ? ["warn", "error"]
           : ["error"],
     });
   }
-  return globalForPrisma.__speakupPrisma;
+  return globalForPrisma.__studentConnectPrisma;
 }
 
 /**

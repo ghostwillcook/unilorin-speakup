@@ -34,7 +34,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>UNILORIN SpeakUp — Student Affairs Unit</title>
+        <title>UNILORIN Student Connect — Student Affairs Unit</title>
         <meta
           name="description"
           content="Report an issue to the University of Ilorin Student Affairs Unit, or talk to other students under a pseudonym."
@@ -681,7 +681,7 @@ function CategoryMasonry() {
 /**
  * The Unit's own front door — kept from the previous landing page, restyled.
  *
- * SpeakUp is a way in to the office, not a replacement for it, so a student
+ * Student Connect is a way in to the office, not a replacement for it, so a student
  * should be able to recognise the building before walking across campus to it.
  *
  * NOTE: the Unit has confirmed its hours — Monday to Friday until 18:00, with
@@ -738,7 +738,7 @@ function VisitTheUnit() {
             <h2 className="wl-h2 mt-5 text-3xl">Visit the Unit</h2>
 
             <p className="mt-3 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
-              SpeakUp is the quickest way to put something on record and follow
+              Student Connect is the quickest way to put something on record and follow
               it. When you would rather say it face to face, the office is open
               through the week.
             </p>
@@ -878,7 +878,7 @@ function SiteFooter() {
         </div>
 
         <p className="text-xs text-[rgb(17_12_30/0.55)]">
-          UNILORIN SpeakUp ·{" "}
+          UNILORIN Student Connect ·{" "}
           <Link
             href="/welcome"
             className="font-semibold text-[var(--wl-violet)] underline-offset-2 hover:underline"

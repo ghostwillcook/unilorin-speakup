@@ -94,7 +94,7 @@ export async function guarded(
     // a maintainer can read. The client gets calm copy instead — an err.message
     // here can be a Prisma error naming tables and columns, and schema detail
     // is not something to hand every signed-in user.
-    console.error("[speakup:api]", err);
+    console.error("[student-connect:api]", err);
     if (!res.headersSent) {
       res
         .status(500)

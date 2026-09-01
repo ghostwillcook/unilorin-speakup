@@ -1,5 +1,5 @@
 /**
- * UNILORIN SpeakUp — standalone realtime server.
+ * UNILORIN Student Connect — standalone realtime server.
  *
  * Socket.io needs a long-lived connection, which Vercel's serverless functions
  * cannot hold, so the realtime layer is its own process: `npm run socket`.
@@ -467,7 +467,7 @@ const httpServer = createServer((req, res) => {
   }
 
   res.writeHead(404, { "Content-Type": "text/plain" });
-  res.end("UNILORIN SpeakUp realtime server. Socket.io endpoint: /socket.io/\n");
+  res.end("UNILORIN Student Connect realtime server. Socket.io endpoint: /socket.io/\n");
 });
 
 const io = new Server(httpServer, {
@@ -1295,7 +1295,7 @@ httpServer.on("error", (error) => {
 
 httpServer.listen(PORT, () => {
   console.log("");
-  console.log("  UNILORIN SpeakUp — realtime server");
+  console.log("  UNILORIN Student Connect — realtime server");
   console.log("  ----------------------------------------------------");
   console.log(`  socket.io    http://localhost:${PORT}`);
   console.log(`  health       http://localhost:${PORT}/health`);

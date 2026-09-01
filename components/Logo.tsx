@@ -85,12 +85,20 @@ function CrestFallback({
   );
 }
 
-/** Wordmark used in headers and the sidebar. */
-export function SpeakUpWordmark({ compact = false }: { compact?: boolean }) {
+/**
+ * Wordmark used in headers and the sidebar.
+ *
+ * Renamed from SpeakUpWordmark when the product was rebranded to "UNILORIN
+ * Student Connect" — the component renders "STUDENT CONNECT" (with CONNECT
+ * in the accent colour, matching the old SPEAK/UP split) and "UNILORIN" as
+ * the suffix when not compact. A type alias keeps the old name importable
+ * so callers don't all need updating at once.
+ */
+export function StudentConnectWordmark({ compact = false }: { compact?: boolean }) {
   return (
     <span className="font-bold tracking-tight">
-      <span className="text-graphite">SPEAK</span>
-      <span className="text-accent">UP</span>
+      <span className="text-graphite">STUDENT</span>{" "}
+      <span className="text-accent">CONNECT</span>
       {!compact && (
         <span className="ml-2 hidden text-xs font-medium uppercase tracking-widest text-muted sm:inline">
           UNILORIN
@@ -99,3 +107,6 @@ export function SpeakUpWordmark({ compact = false }: { compact?: boolean }) {
     </span>
   );
 }
+
+/** Backwards-compatible alias — the old name is used in several imports. */
+export const SpeakUpWordmark = StudentConnectWordmark;

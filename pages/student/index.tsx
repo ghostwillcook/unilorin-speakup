@@ -136,7 +136,7 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
   return (
     <>
       <Head>
-        <title>Student dashboard · UNILORIN SpeakUp</title>
+        <title>Student dashboard · UNILORIN Student Connect</title>
       </Head>
 
       <div className="min-h-screen">

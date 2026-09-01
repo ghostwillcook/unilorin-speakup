@@ -7,7 +7,7 @@ import { prisma, isDbConfigured } from "@/lib/prisma";
  * /admin/settings actually alters behaviour rather than just recording a
  * number.
  */
-export interface SpeakUpSettings {
+export interface StudentConnectSettings {
   /** When false, chat shows real names instead of pseudonyms. */
   anonymousMode: boolean;
   /** Messages one student may send per minute in the global room. */
@@ -21,7 +21,7 @@ export interface SpeakUpSettings {
   complaintSubmissionLimit: number;
 }
 
-export const DEFAULT_SETTINGS: SpeakUpSettings = {
+export const DEFAULT_SETTINGS: StudentConnectSettings = {
   anonymousMode: true,
   chatRateLimitPerMin: 20,
   complaintSubmissionLimit: 0,
@@ -34,7 +34,7 @@ export const SETTING_KEYS = {
 } as const;
 
 /** Reads settings, falling back to defaults for missing rows or no database. */
-export async function getSettings(): Promise<SpeakUpSettings> {
+export async function getSettings(): Promise<StudentConnectSettings> {
   if (!isDbConfigured()) return { ...DEFAULT_SETTINGS };
 
   try {
@@ -62,8 +62,8 @@ export async function getSettings(): Promise<SpeakUpSettings> {
 }
 
 export async function saveSettings(
-  patch: Partial<SpeakUpSettings>,
-): Promise<SpeakUpSettings> {
+  patch: Partial<StudentConnectSettings>,
+): Promise<StudentConnectSettings> {
   const entries: Array<[string, string]> = [];
 
   if (typeof patch.anonymousMode === "boolean") {

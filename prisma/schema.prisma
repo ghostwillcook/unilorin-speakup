@@ -1,4 +1,4 @@
-// UNILORIN SpeakUp — data model.
+// UNILORIN Student Connect — data model.
 //
 // User, Complaint, ChatMessage, Role and Status are the spec's models, ported
 // as written. Setting is the admin-settings addition. ComplaintMessage carries
