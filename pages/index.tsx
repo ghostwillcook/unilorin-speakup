@@ -110,8 +110,9 @@ function SiteHeader() {
         <div className="flex items-center gap-1 sm:gap-1.5">
           {/* Hidden below md rather than sm: at 640-768px the bar would
               otherwise wrap the ghost link or crowd the CTA. The hamburger's
-              menu carries Log in there. */}
-          <Link href="/auth/signin" className="wl-btn-ghost hidden md:inline-flex">
+              menu carries Log in there. Both CTAs route through /welcome so
+              every visitor sees the Dean's message before the form. */}
+          <Link href="/welcome" className="wl-btn-ghost hidden md:inline-flex">
             Log in
           </Link>
           <Link href="/welcome" className="wl-btn-violet whitespace-nowrap">
@@ -158,7 +159,7 @@ function SiteHeader() {
             </a>
           ))}
           <Link
-            href="/auth/signin"
+            href="/welcome"
             className="wl-nav-link block py-2.5 text-base"
             onClick={() => setOpen(false)}
           >
@@ -879,7 +880,7 @@ function SiteFooter() {
         <p className="text-xs text-[rgb(17_12_30/0.55)]">
           UNILORIN SpeakUp ·{" "}
           <Link
-            href="/auth/signin"
+            href="/welcome"
             className="font-semibold text-[var(--wl-violet)] underline-offset-2 hover:underline"
           >
             Sign in

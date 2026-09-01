@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 
 import { dateTimeLabel } from "@/lib/pseudonym";
@@ -10,6 +9,13 @@ import { useSocket } from "@/lib/socket-client";
  * The student notification bell — the read side of the admin→student
  * notification channel, rendered in both headers of the student console
  * (mobile greeting row and desktop bar).
+ *
+ * This component owns ONLY the bell button, the dropdown panel, and the
+ * Web Push opt-in. The blocking full-screen overlay lives in a separate
+ * component (NotificationOverlay) that renders exactly once on the student
+ * page — NOT here — because this bell renders twice (mobile + desktop
+ * headers) and two independent overlays stacked on top of each other was
+ * the bug that made the notification experience feel broken.
  *
  * Self-contained by design: it owns its data (GET /api/notifications →
  * { notifications, unread }), its realtime updates (socket "notification:new"
@@ -29,15 +35,6 @@ import { useSocket } from "@/lib/socket-client";
  * hosting page lifts the whole header to z-40 (and pins it against the
  * scroll-fold), so the header — and everything inside it, dropdown included —
  * clears the dock for as long as the menu is up.
- *
- * Popup toasts: a new notification also pops onto the screen as a dismissible
- * card — not just a badge bump — because a student mid-complaint deserves to
- * know the Unit just posted something. These render through a portal to
- * document.body: the header's stacking context would otherwise cap them at
- * z-20, under the dock, and a fixed element inside a sticky parent inherits
- * that ceiling on several engines. Portaling to the top level lets them sit
- * at z-50, above every console chrome element (header z-20/z-40, dock z-30,
- * sheet z-31).
  */
 
 /** Mirrors StudentNotification in pages/api/notifications/index.ts. */
@@ -51,21 +48,6 @@ interface StudentNotification {
 }
 
 type PushState = "idle" | "on" | "failed";
-
-/** One blocking notification overlay, derived from a notification:new event.
- *  Unlike the old auto-dismissing toasts, these REQUIRE the user to press
- *  Continue — no timeout, no passive dismissal. */
-interface ToastEntry {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: string;
-}
-
-// No auto-dismiss timer: the spec requires explicit user interaction ("the
-// user must press Continue"). Multiple notifications queue sequentially —
-// Notification 1 → Continue → Notification 2 → Continue — so the overlay
-// never stacks; only the head of the queue is rendered.
 
 // Monotonic counter for provisional notification:new rows. Date.now() alone
 // collides when two events land in the same millisecond (duplicate keys in
@@ -118,10 +100,6 @@ export default function NotificationBell({
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loaded, setLoaded] = useState(false);
-  // The blocking overlay queue: notifications arrive here and display ONE at
-  // a time (the head of the array). No auto-dismiss — the Continue button
-  // pops the head, which either reveals the next or clears the overlay.
-  const [toasts, setToasts] = useState<ToastEntry[]>([]);
 
   // Web Push support can only be probed in the browser, so it starts "no" and
   // flips after mount — SSR renders no button at all, which is correct.
@@ -137,14 +115,6 @@ export default function NotificationBell({
   const latestReq = useRef(0);
 
   const userId = session?.user?.id ?? null;
-
-  // Removes the HEAD toast (the Continue button's handler) — sequential queue
-  // semantics: dismissing one reveals the next, or clears the overlay when
-  // the queue empties. The bell's history is untouched; the notification row
-  // is already persisted server-side.
-  const dismissToast = useCallback(() => {
-    setToasts((prev) => prev.slice(1));
-  }, []);
 
   /* ---------------------------------------------------------------- load */
 
@@ -211,19 +181,9 @@ export default function NotificationBell({
       setNotifications((prev) => [provisional, ...prev]);
       setUnread((count) => count + 1);
 
-      // Blocking overlay — pushed to the queue; the head displays as a
-      // full-screen modal requiring Continue. No cap: a burst queues and
-      // shows sequentially, per the spec ("Notification 1 → Continue →
-      // Notification 2 → Continue → App").
-      setToasts((prev) => [
-        ...prev,
-        {
-          id: `toast-${Date.now()}-${provisionalSeq}`,
-          title: provisional.title,
-          body: provisional.body,
-          createdAt: provisional.createdAt,
-        },
-      ]);
+      // The blocking overlay is handled by NotificationOverlay (a separate,
+      // single-instance component on the student page). This bell only
+      // updates the badge and the dropdown list.
 
       void load();
     }
@@ -377,86 +337,8 @@ export default function NotificationBell({
         )}
       </button>
 
-      {/* Blocking notification overlay: portaled to document.body so it
-          escapes the header's z-20 stacking context. A full-screen dimmed
-          modal — only the HEAD of the queue renders (sequential display, per
-          the spec). The user must press Continue; nothing auto-dismisses and
-          nothing behind the overlay is interactive while it is up. */}
-      {toasts.length > 0 &&
-        createPortal(
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-label={toasts[0].title}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          >
-            {/* The card: centered, max-w for readability, solid white so the
-                dimmed app behind reads as "paused" rather than bleeding
-                through. Rounded glass consistent with the app's card
-                language. */}
-            <div className="mx-4 w-full max-w-md rounded-3xl border border-line bg-white px-7 py-8 shadow-[0_32px_64px_rgb(0_0_0/0.3)] sm:px-9 sm:py-10">
-              {/* Notification icon — a small bell in the app's accent, so the
-                  card reads as "notification" at a glance rather than as an
-                  error or a generic modal. */}
-              <div className="flex justify-center">
-                <span className="grid h-12 w-12 place-items-center rounded-full bg-accent/10">
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.7}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-accent"
-                    aria-hidden="true"
-                  >
-                    <path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5Z" />
-                    <path d="M10.3 19.5a2 2 0 0 0 3.4 0" />
-                  </svg>
-                </span>
-              </div>
-
-              {/* Title + body — the notification's content, clearly readable,
-                  generous sizing for a phone held at arm's length. */}
-              <h3 className="mt-5 text-center text-lg font-bold text-graphite sm:text-xl">
-                {toasts[0].title}
-              </h3>
-              <p className="mt-3 text-center text-sm leading-relaxed text-muted sm:text-base">
-                {toasts[0].body}
-              </p>
-
-              <p className="mt-4 text-center text-[0.6875rem] text-muted/60">
-                {dateTimeLabel(toasts[0].createdAt)}
-              </p>
-
-              {/* Queue indicator — only shows when more notifications are
-                  waiting, so the user knows pressing Continue reveals
-                  another rather than returning to the app. */}
-              {toasts.length > 1 && (
-                <p className="mt-3 text-center text-xs font-medium text-muted/70">
-                  {toasts.length - 1} more notification
-                  {toasts.length - 1 === 1 ? "" : "s"} after this
-                </p>
-              )}
-
-              {/* Continue — the only dismissal. Large pill, full-width on
-                  mobile for an easy thumb target; the app's accent fill so it
-                  reads as the primary action. */}
-              <div className="mt-7">
-                <button
-                  type="button"
-                  onClick={dismissToast}
-                  className="w-full rounded-full bg-accent px-6 py-3.5 text-base font-bold text-white shadow-[0_16px_32px_rgb(194_65_12/0.3)] transition-all duration-150 hover:bg-accent-deep hover:shadow-[0_20px_40px_rgb(194_65_12/0.4)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                >
-                  Continue
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {/* The blocking overlay lives in NotificationOverlay (separate,
+          single-instance component), not here — see the file-level note. */}
 
       {open && (
         <div

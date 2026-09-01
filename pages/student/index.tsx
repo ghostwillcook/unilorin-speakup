@@ -14,6 +14,7 @@ import ComplaintThread from "@/components/ComplaintThread";
 import ComplaintForm from "@/components/ComplaintForm";
 import MessagesPanel from "@/components/MessagesPanel";
 import NotificationBell from "@/components/NotificationBell";
+import NotificationOverlay from "@/components/NotificationOverlay";
 import AnonymousRoomPanel from "@/components/AnonymousRoomPanel";
 import NeonButton from "@/components/NeonButton";
 
@@ -347,6 +348,16 @@ export default function StudentDashboard({ user }: { user: SessionUser }) {
           />
         </div>
       </div>
+
+      {/* The blocking notification overlay — rendered ONCE at the page level
+          (not per-header, not per-bell-instance). Two bell instances each
+          running their own overlay was the bug: two modals stacked, fighting
+          for the same z-index. This component listens on the socket for
+          realtime notifications AND fetches unread ones on mount, so even a
+          notification sent while the student was offline (via the REST
+          fallback, which cannot emit socket events) still shows the blocking
+          overlay when the student next opens the app. */}
+      <NotificationOverlay />
     </>
   );
 }
