@@ -46,8 +46,8 @@ const WHAT_YOU_GET = [
   {
     n: "03",
     tag: "Community",
-    title: "A room where you&apos;re a number",
-    body: "The anonymous room lets you talk with other students about what's happening on campus — as Anonymous #42, never as you.",
+    title: "A community room where you are anonymous",
+    body: "The anonymous room lets you talk with other students about what’s happening on campus — as Anonymous #42, never as you.",
   },
 ];
 
@@ -159,9 +159,9 @@ export default function WelcomePage() {
 
                 <Reveal delay={200}>
                   <p className="mx-auto mt-6 max-w-lg text-base leading-relaxed text-white/80 sm:text-lg">
-                    At Student Affairs, every student deserves to be heard.
-                    This platform gives you a space to share your concerns,
-                    ideas, and experiences.
+                    At the Student Affairs Unit, every student deserves to be
+                    heard. This platform gives you a space to share your
+                    concerns, ideas, and experiences.
                   </p>
                 </Reveal>
 
