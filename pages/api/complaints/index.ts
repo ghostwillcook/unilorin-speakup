@@ -9,6 +9,7 @@ import {
 } from "@/lib/guards";
 import type { SessionUser } from "@/lib/guards";
 import { getSettings } from "@/lib/settings";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { ownsStorageKey, UPLOAD_LIMITS } from "@/lib/supabase";
 import type { ComplaintStatus } from "@/components/StatusBadge";
 
@@ -338,6 +339,18 @@ async function create(
 ): Promise<void> {
   if (user.role !== "STUDENT") {
     res.status(403).json({ error: "Only students can file complaints." });
+    return;
+  }
+
+  // Rate limit first: complaint creation was the one write path without one.
+  // Each submission costs several DB round trips plus optional uploads, and
+  // an unthrottled scripted loop could flood the complaints queue and the
+  // admin dashboard stats.
+  const verdict = checkRateLimit(user.id);
+  if (!verdict.ok) {
+    res.status(429).json({
+      error: `You are submitting complaints too quickly. Try again in ${verdict.retryInSeconds}s.`,
+    });
     return;
   }
 

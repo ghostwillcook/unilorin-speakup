@@ -143,6 +143,14 @@ function groupHistory(rows: NotificationRow[]): HistoryEntry[] {
       last.createdAt === row.createdAt
     ) {
       last.count += 1;
+      // A send that reached 2+ students is a broadcast by definition (the
+      // composer has no "these exact two students" mode). The first row's
+      // recipient was carried only to satisfy the push in the merge branch
+      // below — now that this branch has proven the send is not targeted,
+      // null it so the render's "All students" label (the null case) fires.
+      // Without this, every broadcast was labeled with whichever recipient
+      // sorted first, and the count>1 signal was computed but never used.
+      last.recipient = null;
       continue;
     }
     entries.push({

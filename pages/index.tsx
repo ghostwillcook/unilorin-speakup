@@ -343,7 +343,7 @@ function BentoGrid() {
 
       <Stagger step={100} className="mt-12 grid gap-5 lg:grid-cols-3">
         {/* Status journey — the widest card, because it is the core promise. */}
-        <div className="wl-card wl-card-hover p-7 lg:col-span-2" id="complaints">
+        <div className="wl-card wl-card-hover scroll-mt-24 p-7 lg:col-span-2" id="complaints">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="wl-h3 text-xl">Follow your complaint</h3>
             <div className="flex items-center gap-1.5" aria-hidden="true">
@@ -378,7 +378,7 @@ function BentoGrid() {
         </div>
 
         {/* Anonymous chat */}
-        <div className="wl-card wl-card-hover p-7" id="chat">
+        <div className="wl-card wl-card-hover scroll-mt-24 p-7" id="chat">
           <h3 className="wl-h3 text-xl">Anonymous by default</h3>
           <p className="mt-3 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
             In the anonymous room you are a number, never a name — to other students,

@@ -112,6 +112,28 @@ export function useSocket(enabled = true): {
         return;
       }
 
+      // Reconnect-give-up revival: after 5 failed attempts socket.io stops
+      // trying forever, but `shared` is never discarded — so every later page
+      // reused a dead socket and every panel's status pill said
+      // "connecting"/"offline" permanently while REST fallbacks silently
+      // carried the app. When the shared socket has given up (it is neither
+      // connected nor retrying), discard it and build a fresh one: the new
+      // attempt gets a full 5-attempt budget, and the token is re-fetched so
+      // an expired session token is not reused either.
+      //
+      // reconnecting is a private socket.io Manager property with no public
+      // accessor, so it is read defensively and treated as "still trying"
+      // when absent — the cost of a wrong guess is only one rebuilt socket.
+      const existing = shared;
+      const gaveUp =
+        existing !== null &&
+        !existing.connected &&
+        !(existing.io as unknown as { _reconnecting?: boolean })._reconnecting;
+      if (gaveUp) {
+        existing.disconnect();
+        shared = null;
+      }
+
       local =
         shared ??
         io(SOCKET_URL, {

@@ -249,7 +249,9 @@ export default function WelcomePage() {
               the bottom for anyone who scrolled. */}
           <section className="mx-auto w-full max-w-3xl px-5 pb-24 text-center">
             <Reveal>
-              <p className="text-sm leading-relaxed text-[var(--wl-grey)]">
+              {/* --wl-slate (#6C727F) instead of --wl-grey (#BABAC2): the grey
+                  was ~1.9:1 on white, far below WCAG AA (4.5:1). */}
+              <p className="text-sm leading-relaxed text-[var(--wl-slate)]">
                 Your name is never shown to other students. Accounts are issued
                 by the Student Affairs Unit — if you don&apos;t have one yet, visit
                 the office or check your UNILORIN email.

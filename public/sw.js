@@ -1,5 +1,5 @@
 /**
- * UNILORIN SpeakUp service worker — the browser half of the Web Push channel.
+ * UNILORIN Student Connect service worker — the browser half of the Web Push channel.
  *
  * Registered from the client (see lib/push.ts's usage of
  * navigator.serviceWorker), this file receives the pushes the server sends
@@ -23,7 +23,7 @@
  * risk of being revoked by the browser.
  */
 self.addEventListener("push", (event) => {
-  var payload = { title: "UNILORIN SpeakUp", body: "You have a new notification." };
+  var payload = { title: "UNILORIN Student Connect", body: "You have a new notification." };
   try {
     if (event.data) {
       var data = event.data.json();

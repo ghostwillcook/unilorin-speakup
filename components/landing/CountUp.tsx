@@ -26,7 +26,11 @@ export default function CountUp({
 }) {
   const { ref, inView } = useInView<HTMLSpanElement>();
   const reduced = usePrefersReducedMotion();
-  const [display, setDisplay] = useState(0);
+  // Seeded with the target, not 0: the server render (and any no-JS client)
+  // shows the real figure. The count-up effect still runs on first in-view —
+  // it starts by setting display to ~0 on its first animation frame, so
+  // hydration flashes the real number and then the animation takes over.
+  const [display, setDisplay] = useState(value);
   const started = useRef(false);
 
   useEffect(() => {

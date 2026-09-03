@@ -238,15 +238,45 @@ export default function AdminComplaintsPage({ user }: Props) {
   // Deep-link the status filter: the dashboard's status cards navigate here
   // with ?status=PENDING (etc.), and this applies it on arrival — the admin
   // should land on a pre-filtered queue, not have to select the filter
-  // themselves. Runs on mount and on every query change (back/forward
-  // navigation between filtered views re-applies the filter).
+  // themselves. Runs on mount and on every query change.
+  //
+  // The absent-param branch is as important as the present one: without it,
+  // navigating from ?status=PENDING to the plain /admin/complaints (the
+  // "Total" tile, the sidebar link, "Open queue") left the old filter
+  // applied — the URL said unfiltered, the list stayed filtered, and a hard
+  // refresh showed a different queue than the screen did. Now the URL is the
+  // single source of truth in both directions.
   useEffect(() => {
     const raw = router.query.status;
     const value = Array.isArray(raw) ? raw[0] : raw;
-    if (!value) return;
+    if (!value) {
+      // No param = unfiltered. Clear rather than preserve, so the Total
+      // tile's promise (all complaints) holds after a filtered visit.
+      setStatusFilter((current) => (current === "" ? current : ""));
+      return;
+    }
     const status = toStatus(value);
     if (status) setStatusFilter(status);
   }, [router.query.status]);
+
+  // The select writes back to the URL (shallow — no server round trip), so
+  // the URL, the list, and the select can never disagree: a filtered view is
+  // refresh-proof and back/forward-safe, and changing the select updates the
+  // address bar to match.
+  const changeStatusFilter = useCallback(
+    (next: ComplaintStatus | "") => {
+      setStatusFilter(next);
+      void router.replace(
+        {
+          pathname: "/admin/complaints",
+          query: next ? { status: next } : {},
+        },
+        undefined,
+        { shallow: true },
+      );
+    },
+    [router],
+  );
 
   // Single owner of the list request. Any filter change tears down the previous
   // one, so responses can never arrive out of order.
@@ -497,7 +527,7 @@ export default function AdminComplaintsPage({ user }: Props) {
               className="field"
               value={statusFilter}
               onChange={(event) =>
-                setStatusFilter(toStatus(event.target.value))
+                changeStatusFilter(toStatus(event.target.value))
               }
             >
               <option value="">All statuses</option>

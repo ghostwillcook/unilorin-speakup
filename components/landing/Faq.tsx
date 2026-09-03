@@ -57,6 +57,11 @@ export default function Faq({
               id={`wl-faq-panel-${i}`}
               role="region"
               aria-labelledby={`wl-faq-button-${i}`}
+              // hidden removes the collapsed panel from the accessibility tree
+              // and tab order entirely — the 0fr grid row only collapses the
+              // visuals, so screen readers were still announcing closed
+              // answers and keyboard users could scroll into them.
+              hidden={!isOpen}
             >
               <div className="wl-faq-a-inner">
                 <p className="wl-faq-a-text">{item.a}</p>
