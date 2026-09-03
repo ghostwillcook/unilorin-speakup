@@ -358,6 +358,15 @@ async function create(
   // student may have OPEN (PENDING or IN_REVIEW) at once. 0 = unlimited.
   // Checked BEFORE validation so a limit-blocked student gets the limit
   // message rather than a title-length complaint they can never submit.
+  //
+  // NOTE: there is a theoretical TOCTOU race — two requests submitted in
+  // the same instant can both read openCount < limit and both create. The
+  // worst case is one extra complaint over the limit, which self-corrects
+  // when either complaint is resolved. Closing it properly requires a
+  // serializable transaction or a DB-level constraint that doesn't exist
+  // here (the "open" count depends on status, not a counter column), and
+  // the cost of that machinery far outweighs a single over-limit complaint
+  // on a platform whose rate limit already prevents rapid-fire submissions.
   const { complaintSubmissionLimit } = await getSettings();
   if (complaintSubmissionLimit > 0) {
     const openCount = await prisma.complaint.count({

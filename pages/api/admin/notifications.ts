@@ -94,7 +94,16 @@ function readString(value: unknown): string {
  *
  * Takes all recipient ids at once so a broadcast is one subscriptions query,
  * not one per student.
+ *
+ * The push body is truncated to PUSH_BODY_MAX characters: the Web Push
+ * protocol has a ~4KB total payload ceiling (HTTP 413 above it), and since
+ * the notification length caps were removed, the admin can write a message
+ * that no push service will accept. The full text is always in the database
+ * and the in-app overlay — only the lock-screen preview is clipped.
  */
+const PUSH_TITLE_MAX = 100;
+const PUSH_BODY_MAX = 3000;
+
 async function pushToRecipients(
   userIds: string[],
   title: string,
@@ -120,11 +129,17 @@ async function pushToRecipients(
           endpoint: sub.endpoint,
           keys: { p256dh: sub.p256dh, auth: sub.auth },
         },
-        JSON.stringify({ title, body }),
+        JSON.stringify({
+          title: title.slice(0, PUSH_TITLE_MAX),
+          body: body.slice(0, PUSH_BODY_MAX),
+        }),
       );
     } catch (err) {
       // 404/410 = the subscription is dead (uninstalled, expired). Prune;
-      // anything else is transient and the next send retries it.
+      // 413 = payload too large for this push service (already truncated —
+      // some services have tighter limits); skip rather than prune, because
+      // the subscription itself is healthy. Anything else is transient and
+      // the next send retries it.
       const statusCode = (err as { statusCode?: number }).statusCode;
       if (statusCode === 404 || statusCode === 410) {
         await prisma.pushSubscription
@@ -176,12 +191,18 @@ async function send(
   });
 
   // Push after persistence — the rows are the source of truth, so a push
-  // outage must never make the send itself fail.
-  await pushToRecipients(
-    recipients.map((r) => r.id),
-    title,
-    message,
-  );
+  // outage must never make the send itself fail. Fire-and-forget (detached
+  // with setImmediate so the response is sent BEFORE the push loop runs):
+  // a serial push to every subscription of every recipient can easily
+  // outlast a serverless function's timeout, which would yield a 504 "not
+  // sent" after the rows were already committed — and an admin retrying
+  // after that error would duplicate the send. The push may still be cut
+  // short by a function timeout for very large broadcasts, but the in-app
+  // notification is already delivered; the push is the enhancement.
+  const recipientIds = recipients.map((r) => r.id);
+  setImmediate(() => {
+    void pushToRecipients(recipientIds, title, message).catch(() => {});
+  });
 
   res.status(201).json({ count: recipients.length });
 }

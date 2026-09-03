@@ -774,17 +774,35 @@ async function pickLivePseudonym() {
 }
 
 /** Creates the student's conversation if this is their first touch — the
- *  socket twin of ensureConversation in /api/livechat. */
+ *  socket twin of ensureConversation in /api/livechat.
+ *
+ *  The find-then-create shape had a race: two concurrent first-touches
+ *  (two tabs opened simultaneously) both saw "no existing", both created,
+ *  and the second hit a P2002 on the unique userId — which surfaced to the
+ *  user as "Message could not be delivered." The P2002 catch below turns
+ *  that into a re-read: the other tab's create won, so read it back. */
 async function ensureLiveConversation(userId) {
   const existing = await prisma.liveConversation.findUnique({
     where: { userId },
     select: { id: true, pseudonym: true, status: true },
   });
   if (existing) return existing;
-  return prisma.liveConversation.create({
-    data: { userId, pseudonym: await pickLivePseudonym() },
-    select: { id: true, pseudonym: true, status: true },
-  });
+  try {
+    return await prisma.liveConversation.create({
+      data: { userId, pseudonym: await pickLivePseudonym() },
+      select: { id: true, pseudonym: true, status: true },
+    });
+  } catch (error) {
+    // P2002 = unique constraint violation — the conversation was created
+    // between our find and our create. The row exists now; read it.
+    if (error?.code === "P2002") {
+      return prisma.liveConversation.findUnique({
+        where: { userId },
+        select: { id: true, pseudonym: true, status: true },
+      });
+    }
+    throw error;
+  }
 }
 
 async function handleLivechatJoin(socket, payload) {

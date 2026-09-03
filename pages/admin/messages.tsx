@@ -201,10 +201,14 @@ export default function AdminMessagesPage() {
   const nearBottom = useRef(true);
   /**
    * The reply text most recently handed to the socket, kept so a chat:error
-   * can put it back in the composer if the server rejects it. Cleared when
-   * the livechat:new echo of that reply confirms it was persisted.
+   * can put it back in the composer if the server rejects it. Carries the
+   * conversationId alongside the text: chat:error is not conversation-
+   * scoped, and restoring conversation A's draft into conversation B's
+   * composer (because the admin switched while the send was failing) is
+   * a cross-conversation leak. Cleared when the livechat:new echo of that
+   * reply confirms it was persisted.
    */
-  const lastReplyRef = useRef<string | null>(null);
+  const lastReplyRef = useRef<{ text: string; conversationId: string } | null>(null);
   /**
    * Messages removed by this tab's own delete gesture and not yet confirmed,
    * keyed by id, kept so a failure can put the bubbles back. A Map, not a
@@ -341,6 +345,19 @@ export default function AdminMessagesPage() {
         if (message.senderRole === "ADMIN") {
           lastReplyRef.current = null;
         }
+        // A student message arriving in the conversation this admin is
+        // actively reading has been seen by definition — the inbox refresh
+        // below would otherwise re-apply the server's adminUnread count
+        // (which was bumped by the send) and re-light the badge on the
+        // conversation the admin is watching. Clear it locally before the
+        // refresh lands.
+        if (message.senderRole === "STUDENT") {
+          setInbox((prev) =>
+            prev.map((c) =>
+              c.id === message.conversationId ? { ...c, adminUnread: 0 } : c,
+            ),
+          );
+        }
       }
     }
 
@@ -396,7 +413,21 @@ export default function AdminMessagesPage() {
           ? payload.message
           : null;
 
-      const lostMessages = [...pendingDeletes.current.values()];
+      // Restore ONLY stashed items that belong to the currently-open
+      // conversation. chat:error is not conversation-scoped — it says "a
+      // socket action failed" but not which one — and the admin may have
+      // already switched conversations since the failed gesture. Restoring
+      // conversation A's bubbles into conversation B's thread (labelled with
+      // B's pseudonym) is a data leak between conversations; dropping the
+      // stash is safer than that.
+      const currentId = selectedIdRef.current;
+      const lostMessages = [...pendingDeletes.current.values()].filter(
+        (lost) => !currentId || lost.conversationId === currentId,
+      );
+      // Clear the whole map either way: entries from other conversations
+      // are still spent (their actions either succeeded or their errors
+      // are unrecoverable from here) and holding them forever means a
+      // later unrelated chat:error restores stale messages.
       pendingDeletes.current.clear();
       if (lostMessages.length > 0) {
         setMessages((prev) => {
@@ -406,10 +437,14 @@ export default function AdminMessagesPage() {
         });
       }
 
+      // Same conversation-scoping for the lost reply draft: only re-inject
+      // the stashed text if the admin hasn't switched conversations since
+      // the failed send. The ref must also be conversation-aware — see the
+      // lastReplyRef type (it stores the conversationId alongside the text).
       const lostReply = lastReplyRef.current;
       lastReplyRef.current = null;
-      if (lostReply) {
-        setDraft((current) => (current.trim() ? current : lostReply));
+      if (lostReply && (!currentId || lostReply.conversationId === currentId)) {
+        setDraft((current) => (current.trim() ? current : lostReply.text));
       }
 
       setThreadError(reason ?? "Message could not be sent. Please try again.");
@@ -499,9 +534,11 @@ export default function AdminMessagesPage() {
       socket.emit("livechat:reply", { conversationId: selectedId, content });
       // Stash what was handed over: the emit has no return value, so a
       // chat:error is the only signal the reply was rejected — and only this
-      // ref still holds the text to put back. Spent when the livechat:new
-      // echo confirms the row was written.
-      lastReplyRef.current = content;
+      // ref still holds the text to put back. The conversationId travels
+      // with it so the restore handler knows whether the text still belongs
+      // in the open composer. Spent when the livechat:new echo confirms
+      // the row was written.
+      lastReplyRef.current = { text: content, conversationId: selectedId };
       setDraft("");
       const el = composerRef.current;
       if (el) el.style.height = "auto";
