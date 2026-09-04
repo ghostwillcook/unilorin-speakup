@@ -883,6 +883,31 @@
     transform: translateY(0);
   }
 
+  /* --- Per-word heading reveal (WordLines) ------------------------------ */
+  /* Word-level sibling of .line-clip: the clip becomes an inline-block so
+     words flow as ordinary text (a word is the unit text already wraps on, so
+     the extra boxes cannot change where the line breaks), while overflow:
+     hidden still lets each word rise out of nothing. */
+  .word-clip {
+    display: inline-block;
+    /* Display line-heights sit tighter than the font's real ascent+descent,
+       so a bare clip would shave descenders. The padding widens the visible
+       window (overflow clips at the padding edge) and the negative margin
+       cancels it, leaving the line box exactly as tall as plain text. */
+    padding-block: 0.12em;
+    margin-block: -0.12em;
+  }
+  /* 110% of the tight line box no longer clears the taller visible window,
+     so the hidden start state sinks further to stay fully concealed. The
+     .line-in companion must match this specificity or the settled state
+     would lose to the rule above. */
+  .word-clip .line-inner {
+    transform: translateY(130%);
+  }
+  .word-clip .line-in {
+    transform: translateY(0);
+  }
+
   /* --- Rotating word --------------------------------------------------- */
   .rotator {
     position: relative;
@@ -1188,6 +1213,12 @@
     animation: none !important;
   }
 
+  /* Skeleton shimmer (animate-pulse) — the pulse is pure decoration; a static
+     gray block carries the same "not ready" meaning without the motion. */
+  .animate-pulse {
+    animation: none !important;
+  }
+
   /* The glint becomes a static hairline rather than vanishing — the edge is
      part of the panel, only its travel was decoration. */
   .edge-run::before {
@@ -1326,6 +1357,19 @@
   font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+/* The italic-serif accent word — at most ONE per headline. The contrast
+   against the heavy grotesque is the signature; a second accent word in the
+   same heading stops reading as intent and starts reading as a font mix-up.
+   Size and colour are inherited from the headline so only the family,
+   style, weight and tracking change. */
+.wl-accent {
+  font-family: var(--wl-accent), ui-serif, Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  /* Serif italics need normal tracking: the -0.03em the display faces use
+     would crowd the curves against their neighbours. */
+  letter-spacing: 0;
 }
 .wl-body-lg {
   font-size: 1.0625rem;
@@ -1548,6 +1592,42 @@
   border-radius: var(--wl-r-card-lg);
   color: #ffffff;
   overflow: visible;
+}
+
+/* Grain + vignette: the two overlays that kill the flat-digital look of a
+   solid violet field. Grain is the same feTurbulence data URI the shapes use
+   (.wl-shape::after) at a lower opacity; the vignette darkens the edges so
+   the field reads as lit-from-the-centre rather than an even screen fill.
+   Both sit at z-index 0 — above the background paint, below the content and
+   the floating objects, which live in the normal flow above them (the
+   ParallaxObject wrappers and .relative content stack). pointer-events:none
+   keeps them purely decorative. overflow:visible on .wl-hero means these
+   pseudo-elements must self-clip with inherit'd border-radius — they do,
+   via inset: 0 + border-radius: inherit. */
+.wl-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+  mix-blend-mode: overlay;
+  opacity: 0.18;
+  pointer-events: none;
+}
+.wl-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    120% 120% at 50% 45%,
+    transparent 55%,
+    rgb(10 0 40 / 0.18) 100%
+  );
+  pointer-events: none;
 }
 
 /* Matte grain over the 3D objects. A feTurbulence rect as a data URI at

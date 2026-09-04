@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import { requirePage, isRedirect, type SessionUser } from "@/lib/guards";
 import { SpeakUpWordmark, UnilorinLogo } from "@/components/Logo";
 import { EmptyState } from "@/components/GlassCard";
+import Skeleton, { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import StatusBadge, { type ComplaintStatus } from "@/components/StatusBadge";
 import { SlideSwitch } from "@/components/Motion";
 import { dateTimeLabel } from "@/lib/pseudonym";
@@ -391,14 +392,35 @@ function MyComplaints({
         </div>
       </div>
 
-      {complaints.length === 0 ? (
+      {!loaded ? (
+        /* Mirror of a real complaint row (flex, px-5 py-4, gap-4, title + meta
+           + last-message bars, badge-shaped right column) so the swap to real
+           rows is a fill-in, not a layout jump. Kept as a ul/li divide-y so
+           the section height matches the loaded list's geometry. */
+        <SkeletonList label="Loading your complaints…">
+          <ul className="divide-y divide-line" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="flex items-center gap-4 px-5 py-4">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-4 w-3/5 rounded" />
+                    <Skeleton className="badge h-4 w-12 rounded-full" />
+                  </div>
+                  <SkeletonLine width="w-2/5" />
+                  <SkeletonLine width="w-4/5" />
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <Skeleton className="badge h-4 w-20 rounded-full" />
+                  <Skeleton className="h-4 w-4 rounded-full" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </SkeletonList>
+      ) : complaints.length === 0 ? (
         <EmptyState
-          title={loaded ? "You have not lodged any complaints yet." : "Loading…"}
-          hint={
-            loaded
-              ? "When you submit one, it appears here with its own thread you and the Unit can talk in."
-              : undefined
-          }
+          title="You have not lodged any complaints yet."
+          hint="When you submit one, it appears here with its own thread you and the Unit can talk in."
         />
       ) : (
         <ul className="divide-y divide-line">

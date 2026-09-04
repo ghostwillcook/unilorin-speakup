@@ -1,4 +1,4 @@
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Instrument_Serif, Inter, Plus_Jakarta_Sans } from "next/font/google";
 
 /**
  * Landing-page typography, kept separate from the app's system fonts.
@@ -23,5 +23,19 @@ export const wlDisplay = Plus_Jakarta_Sans({
 export const wlBody = Inter({
   subsets: ["latin"],
   variable: "--wl-body",
+  display: "swap",
+});
+
+/**
+ * The italic-serif accent face. Wollo headlines pair the heavy grotesque with
+ * exactly one italic serif word per heading — the contrast is the signature,
+ * so the face ships in italic only (Instrument Serif has no other styles at
+ * weight 400 anyway) and is applied via .wl-accent, never wholesale.
+ */
+export const wlAccent = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: "italic",
+  variable: "--wl-accent",
   display: "swap",
 });

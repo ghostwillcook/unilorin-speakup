@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 
 import AdminLayout from "@/components/AdminLayout";
 import GlassCard, { EmptyState, PanelHeader } from "@/components/GlassCard";
+import Skeleton, { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import ComplaintThread from "@/components/ComplaintThread";
 import NeonButton from "@/components/NeonButton";
 import StatusBadge, { STATUSES } from "@/components/StatusBadge";
@@ -572,10 +573,39 @@ export default function AdminComplaintsPage({ user }: Props) {
       {rows.length === 0 ? (
         <GlassCard>
           {!loaded && loading ? (
-            <EmptyState
-              title="Loading complaints…"
-              hint="Fetching the queue from the database."
-            />
+            /* Skeleton mirror of a complaint row (GlassCard li, px-4 py-4
+               sm:px-5, title + badge + meta line + description bar + action
+               strip) so the swap to real cards fills in rather than jumping.
+               Match the loaded list's space-y-3 card stack too. */
+            <SkeletonList
+              label="Loading complaints…"
+              className="space-y-3 px-4 py-4 sm:px-5"
+            >
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="space-y-2.5" aria-hidden="true">
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Skeleton className="h-4 w-2/5 rounded" />
+                        <Skeleton className="badge h-4 w-20 rounded-full" />
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        <SkeletonLine width="w-1/3" />
+                        <SkeletonLine width="w-2/3" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-3.5 w-24" />
+                  </div>
+                  <SkeletonLine width="w-full" />
+                  <div className="mt-1.5 flex gap-2 border-t border-line pt-3">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                    <Skeleton className="h-6 w-24 rounded-full" />
+                    <span className="flex-1" />
+                    <Skeleton className="h-6 w-24 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </SkeletonList>
           ) : !loaded ? (
             <EmptyState
               title="Complaints unavailable"

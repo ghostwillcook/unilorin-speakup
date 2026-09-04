@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { UnilorinLogo, SpeakUpWordmark } from "@/components/Logo";
-import { Marquee, Reveal, SplitLines, Stagger } from "@/components/Motion";
+import { Marquee, Reveal, Stagger, WordLines } from "@/components/Motion";
 import CountUp from "@/components/landing/CountUp";
 import Faq from "@/components/landing/Faq";
 import {
@@ -15,7 +15,7 @@ import {
   SphereShape,
   SpeechBubbleShape,
 } from "@/components/landing/Shapes";
-import { wlBody, wlDisplay } from "@/lib/fonts";
+import { wlAccent, wlBody, wlDisplay } from "@/lib/fonts";
 import { useHeaderFold } from "@/lib/useHeaderFold";
 
 /**
@@ -41,7 +41,9 @@ export default function Home() {
         />
       </Head>
 
-      <div className={`wl-page flex min-h-screen flex-col ${wlDisplay.variable} ${wlBody.variable}`}>
+      <div
+        className={`wl-page flex min-h-screen flex-col ${wlDisplay.variable} ${wlBody.variable} ${wlAccent.variable}`}
+      >
         <SiteHeader />
 
         <main className="flex-1">
@@ -259,7 +261,15 @@ function Hero() {
           </Reveal>
 
           <h1 className="wl-display mt-7 text-[clamp(2.5rem,7vw,5.5rem)] text-white">
-            <SplitLines lines={["UNILORIN", "Student Connect."]} />
+            {/* Node arrays per line: "Connect." is the one italic-serif accent
+                word in the hero, wrapped in its own word slot so the reveal
+                still treats it as a single unit of the sequence. */}
+            <WordLines
+              lines={[
+                ["UNILORIN"],
+                ["Student", <span key="connect" className="wl-accent">Connect.</span>],
+              ]}
+            />
           </h1>
 
           <Reveal delay={140}>
@@ -337,7 +347,8 @@ function BentoGrid() {
           Everything on one record
         </span>
         <h2 className="wl-h2 mt-4 max-w-2xl">
-          From the moment you raise it to the moment it&apos;s resolved.
+          From the moment you raise it to the moment it&apos;s{" "}
+          <span className="wl-accent">resolved.</span>
         </h2>
       </Reveal>
 
@@ -499,7 +510,9 @@ function NumberedFeatures() {
           <span className="wl-kicker-dot" aria-hidden="true" />
           How it works
         </span>
-        <h2 className="wl-h2 mt-4 max-w-2xl">Three steps, start to resolution.</h2>
+        <h2 className="wl-h2 mt-4 max-w-2xl">
+          Three steps, start to <span className="wl-accent">resolution.</span>
+        </h2>
       </Reveal>
 
       <Stagger step={100} className="mt-12 grid gap-5 md:grid-cols-3">
@@ -827,7 +840,9 @@ function CtaBanner() {
     <section className="mx-auto w-full max-w-6xl px-5 pb-24">
       <div className="wl-hero wl-on-violet relative flex flex-col items-start gap-8 overflow-hidden p-10 sm:p-14 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative max-w-xl">
-          <h2 className="wl-h2 text-white">Your voice reaches further here.</h2>
+          <h2 className="wl-h2 text-white">
+            Your voice reaches <span className="wl-accent">further</span> here.
+          </h2>
           <p className="mt-4 text-base leading-relaxed text-white/80">
             Sign in with your UNILORIN email, raise what matters, and follow it
             through to the reply.

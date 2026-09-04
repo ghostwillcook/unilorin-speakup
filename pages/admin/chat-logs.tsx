@@ -3,6 +3,7 @@ import type { GetServerSideProps } from "next";
 
 import AdminLayout from "@/components/AdminLayout";
 import GlassCard, { EmptyState, PanelHeader } from "@/components/GlassCard";
+import Skeleton, { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import NeonButton from "@/components/NeonButton";
 import { isRedirect, requirePage } from "@/lib/guards";
 import type { SessionUser } from "@/lib/guards";
@@ -374,25 +375,48 @@ export default function AdminChatLogs({ user }: Props) {
             title="That date range is inverted"
             hint="The “From” date is after the “To” date, so no message can match. Swap them to search."
           />
+        ) : logs.length === 0 && loading && !loaded ? (
+          /* Skeleton mirror of a log row (px-4 py-3.5 sm:px-5, pseudonym/identity
+             pairing chip with h-9 w-9 avatar, timestamp, message body) so the
+             swap to real rows fills in rather than jumping. */
+          <SkeletonList label="Loading chat log…">
+            <ul className="divide-y divide-line" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <li key={i} className="px-4 py-3.5 sm:px-5">
+                  <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                    <div className="flex items-center gap-2.5 rounded-xl border border-line bg-canvas/85 py-1.5 pl-1.5 pr-3">
+                      <Skeleton className="h-9 w-9 rounded-lg" />
+                      <div className="space-y-1.5">
+                        <div className="flex items-baseline gap-x-2">
+                          <Skeleton className="h-3.5 w-20 rounded" />
+                          <Skeleton className="h-3 w-2 rounded" />
+                          <Skeleton className="h-3.5 w-28 rounded" />
+                        </div>
+                        <SkeletonLine width="w-32" className="h-3" />
+                      </div>
+                    </div>
+                    <Skeleton className="mt-1 h-3 w-20" />
+                  </div>
+                  <SkeletonLine width="w-4/5" className="mt-2" />
+                </li>
+              ))}
+            </ul>
+          </SkeletonList>
         ) : logs.length === 0 ? (
           <EmptyState
             title={
               error
                 ? "Chat log unavailable"
-                : loading && !loaded
-                  ? "Loading chat log…"
-                  : filtered
-                    ? "No messages match these filters"
-                    : "No chat messages yet"
+                : filtered
+                  ? "No messages match these filters"
+                  : "No chat messages yet"
             }
             hint={
               error
                 ? "Resolve the problem above, then use Refresh."
-                : loading && !loaded
-                  ? undefined
-                  : filtered
-                    ? "Widen the date range or clear the keyword and student filters."
-                    : "Messages sent in the public chat room will be recorded here."
+                : filtered
+                  ? "Widen the date range or clear the keyword and student filters."
+                  : "Messages sent in the public chat room will be recorded here."
             }
           />
         ) : (

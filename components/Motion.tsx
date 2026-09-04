@@ -1,5 +1,6 @@
 import {
   Children,
+  Fragment,
   isValidElement,
   useEffect,
   useState,
@@ -108,6 +109,79 @@ export function SplitLines({
           </span>
         </span>
       ))}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* WordLines — per-word reveal for oversized display headings                  */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Reveals a heading word by word, in one continuous stagger that runs across
+ * line boundaries — word 1 of line 2 fires after the last word of line 1, so
+ * a multi-line headline assembles as a single sequence instead of restarting
+ * per row.
+ *
+ * Layout transparency is the whole trick: a word is already the unit that
+ * text wraps on, so wrapping each word in an inline-block clip (see
+ * .word-clip in globals.css) changes nothing about how the line breaks. The
+ * inter-word space is rendered as a text node BETWEEN the clips — a space
+ * inside an overflow-hidden inline-block collapses to nothing, while a text
+ * node between them is the browser's own inter-word spacing.
+ *
+ * Each entry of `lines` may be a plain string or a list of React nodes; the
+ * nodes let one word carry extra styling (the .wl-accent serif word) without
+ * breaking it out of the word sequence.
+ */
+export function WordLines({
+  lines,
+  step = 100,
+  className = "",
+}: {
+  lines: (string | ReactNode[])[];
+  step?: number;
+  className?: string;
+}) {
+  const { ref, inView } = useInView<HTMLSpanElement>();
+
+  // Each authored line stays its own block, so hard-coded line breaks keep
+  // working exactly as they did with SplitLines.
+  const parsed = lines.map((line) =>
+    typeof line === "string" ? line.split(/\s+/).filter(Boolean) : line,
+  );
+
+  // Prefix sums give each word a sequence index that keeps counting across
+  // lines — the delay math below is what makes the stagger continuous.
+  const starts: number[] = [];
+  let total = 0;
+  for (const line of parsed) {
+    starts.push(total);
+    total += line.length;
+  }
+
+  return (
+    <span ref={ref} className={`block ${className}`}>
+      {parsed.map((lineWords, lineIndex) => {
+        const start = starts[lineIndex];
+        return (
+          <span key={lineIndex} className="block">
+            {lineWords.map((word, wordIndex) => (
+              <Fragment key={`${lineIndex}-${wordIndex}`}>
+                {wordIndex > 0 ? " " : null}
+                <span className="line-clip word-clip">
+                  <span
+                    className={`line-inner ${inView ? "line-in" : ""}`}
+                    style={{ transitionDelay: `${(start + wordIndex) * step}ms` }}
+                  >
+                    {word}
+                  </span>
+                </span>
+              </Fragment>
+            ))}
+          </span>
+        );
+      })}
     </span>
   );
 }
