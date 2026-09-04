@@ -1,0 +1,39 @@
+{
+  "skill_name": "tdd-plan-executor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "There's a TDD plan bundle at docs/plans/login-lockout/ (00-overview.md, 00-coverage.md, 4 slice files) built from the spec at docs/features/login-lockout/. Execute the full plan, wave by wave. This is a Node/Jest repo (package.json has a jest devDependency but no lockfile/node_modules yet, and no src/ yet — you'll need to `npm install` first). Don't stop to ask me anything, just work through it and report at the end.",
+      "expected_output": "All 4 slices done in dependency order (01, then 02+03, then 04), each with a real captured RED evidence file and a real captured GREEN evidence file under docs/plans/login-lockout/evidence/ (TC-1..TC-4), a real login(email, password, clock) implementation using an injectable clock (no real timers/Date.now() in tests), all acceptance criteria checked off against literal SPEC.md/API-CONTRACTS.md wording, a final full-suite `npm test` run reported green, one git commit per slice staged by explicit path, and (since this fixture has a jest coverageThreshold configured) a passing coverage run reported for every slice.",
+      "files": [],
+      "expectations": [
+        "npm install actually runs (node_modules/.bin/jest exists) before any test is written",
+        "Each of TC-1..TC-4 has both a RED and a GREEN evidence file under docs/plans/login-lockout/evidence/, and the RED file's content shows an actual failing run (not narrated)",
+        "Slice 01 is completed before slices 02/03 start, and slice 04 is completed only after slice 02, matching the plan's dependency matrix",
+        "The lockout-expiry test (TC-4) uses an injected fake clock rather than a real timer or Date.now()",
+        "Final `npm test` run is executed and reported passing with no regressions",
+        "No slice's guardrails are violated (e.g. slice 02 does not implement lockout expiry, slice 01 does not implement locked-state rejection)",
+        "One git commit exists per slice (4 total beyond the initial fixture commit), each staged by explicit path (no git add -A/.), each made only after that slice's full-suite gate passed, none made in a red state",
+        "The repo's jest coverageThreshold is discovered and `npm run test:coverage` (or equivalent) is actually run at least once per slice, with real reported percentages — not skipped or narrated",
+        "If a slice's first implementation attempt drops coverage below the configured threshold, the fix is a real reduction of untested/speculative code (or an added test), not a lowered threshold or excluded file"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "There's a TDD plan bundle at docs/plans/coupon-discount/ (00-overview.md, 00-coverage.md, 3 slice files) for the spec at docs/features/coupon-discount/. Note src/discount.js and src/tax.js already exist (pre-existing, untested). Execute the plan slice by slice — start with slice 01. This is a Node/Jest repo, no node_modules yet. Work through all 3 slices without stopping to check in, then tell me what you did.",
+      "expected_output": "Slice 01 produces an honest RED for TC-1 — since applyDiscount(100, 20) already returns 80 today, the RED evidence must show a deliberately-wrong assertion failing for the right reason, not a trivial immediate pass. Slices 02 and 03 add the real 50%-cap and non-positive-price guard to src/discount.js with real RED/GREEN evidence. src/tax.js is left completely untouched throughout. Full suite passes at the end. One git commit per slice. This project has no coverage/mutation/lint tooling configured at all — those gates are skipped as genuinely not applicable, except a one-time suggestion to add a linter (since it's a plain JS project), never installed unprompted.",
+      "files": [],
+      "expectations": [
+        "Slice 01's RED evidence file shows a deliberately-wrong expected value failing (e.g. expecting something other than 80), not applyDiscount(100,20)===80 passing on the first run",
+        "Slice 01's GREEN evidence file shows the corrected assertion (expecting 80) passing",
+        "src/tax.js is byte-for-byte unmodified after the run",
+        "Slice 02 adds a real 50% cap to src/discount.js and TC-2's RED evidence shows a real failure (80% request returning ~20, not 50) before the fix",
+        "Slice 03 adds a real non-positive-price guard throwing \"price must be positive\" and TC-3's RED evidence shows a real failure before the fix",
+        "Final `npm test` run is executed and reported passing with no regressions",
+        "One git commit exists per slice (3 total beyond the initial fixture commit), each staged by explicit path (no git add -A/.), none touching src/tax.js, none made in a red state",
+        "No coverage or mutation-testing command is run or fabricated, since none is configured in this fixture",
+        "The final report includes a one-time suggestion to add a linter (e.g. ESLint) for this plain Node/JS project, and no lint tool/config/script was actually installed or added"
+      ]
+    }
+  ]
+}

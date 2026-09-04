@@ -1,0 +1,64 @@
+{
+  "skill_name": "spec",
+  "evals": [
+    {
+      "id": 0,
+      "name": "create-workspaces-from-prd",
+      "prompt": "I got this requirements doc from our client for a new feature, can you turn it into a proper spec bundle?\n\n---\nStudy Spaces & Workspace Management\n\nUsers need to create named 'workspaces' (study spaces) where they can organize their learning materials. Each workspace belongs to one owner. Users can rename a workspace, delete it (which also deletes all sources/documents inside it), and invite up to 5 other collaborators via email who get read+comment access (not edit). A user can be a member of unlimited workspaces. The workspace list should support search by name. Deleting a workspace should ask for confirmation and cannot be undone. There's no need for workspace templates or public sharing links in v1.\n---\n\nPlease generate the full spec bundle for this under .wise/specs/workspaces/, matching this project's spec-bundle conventions.",
+      "expected_output": "A .wise/specs/workspaces/ folder containing SPEC.md, API-CONTRACTS.md, TEST-SPEC.md, with real FR/NFR/Edge Cases derived from the pasted requirements (not just reformatted headers), matching this project's heading/numbering/table conventions, and passing the validator with zero errors.",
+      "files": [],
+      "expectations": [
+        ".wise/specs/workspaces/ contains SPEC.md, API-CONTRACTS.md, and TEST-SPEC.md",
+        "Running scripts/validate.ts against .wise/specs/workspaces reports 'Found 0 error(s)'",
+        "SPEC.md's Functional Requirements cover the PRD's actual content: single-owner workspaces, rename, delete-cascades-to-sources, invite up to 5 collaborators with read+comment (not edit) access, unlimited membership, name search, delete confirmation",
+        "No literal '&amp;' appears anywhere in the generated files",
+        "Neither ENTITIES.md nor USE-CASES.md was created, since they're not part of the active bundle",
+        "API-CONTRACTS.md and TEST-SPEC.md each contain a '> Part of [SPEC.md]...' backlink referencing the other sibling file"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "create-then-validate-checkout-bundle",
+      "prompt": "There's no spec bundle yet for our 'checkout' flow. Can you spec it out under .wise/specs/checkout/ (basic flow: user starts checkout, optionally applies a promo code, completes payment)? Once it's written, run whatever validation we have set up against it and confirm it's clean — I want to make sure the whole thing actually checks out, not just that it looks right.",
+      "expected_output": "A .wise/specs/checkout/ bundle (SPEC.md, TEST-SPEC.md, plus API-CONTRACTS.md if a client-server boundary applies) with real FR/NFR/Edge Cases for the checkout flow, followed by an explicit validator run reporting 0 errors.",
+      "files": [],
+      "expectations": [
+        ".wise/specs/checkout/ contains SPEC.md and TEST-SPEC.md at minimum",
+        "Neither ENTITIES.md nor USE-CASES.md was created",
+        "The response reflects actually running the bundled validator (a concrete pass/fail result), not a vague 'looks fine' guess",
+        "The response correctly reports 0 errors after any fixes are applied"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "refine-checkout-edge-case-cascade",
+      "prompt": "Spec out a 'checkout' feature at .wise/specs/checkout/ (user starts checkout, optionally applies a promo code, completes payment). Then add an edge case for what happens when a promo code is invalid or expired — pick a reasonable handling strategy. Make sure everything that should reference it does, and double check the whole checkout bundle still checks out afterward.",
+      "expected_output": "A .wise/specs/checkout/ bundle with a new EC-N in SPEC.md (a table row) describing invalid/expired promo code handling, at least one corresponding test case referencing it in TEST-SPEC.md, and the whole bundle passing validation (0 errors).",
+      "files": [],
+      "expectations": [
+        "SPEC.md has an EC-N row in the Edge Cases table, describing invalid/expired promo code handling",
+        "The edge case specifies a concrete handling strategy (e.g. reject and show an error, ignore and charge full price), not vague language",
+        "TEST-SPEC.md contains at least one test case referencing the new EC id (a Gherkin @EC-N tag in the current skill, or a **Reference** field in an older version)",
+        "Running the validator against the final .wise/specs/checkout reports 'Found 0 error(s)'",
+        "No duplicate IDs or dangling reference pointers were introduced"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "create-workspace-fork-feature",
+      "prompt": "I want add fork feature for workspace so others user can fork my workspace that contains all sources i've been earlier but not with my chat history",
+      "expected_output": "A new feature spec bundle (SPEC.md, API-CONTRACTS.md, TEST-SPEC.md — e.g. .wise/specs/workspace-forking/) capturing: forking copies the source workspace's sources/documents but explicitly excludes chat history, the forker becomes the new owner of an independent copy, and the original workspace/its collaborators are unaffected. Passes the validator with zero errors. This is a rougher, more casual/incomplete input than eval-0's full PRD, and 'workspaces' itself has no spec bundle yet in this repo — a good test of how the skill handles an ambiguous, dependency-on-a-nonexistent-sibling-feature situation.",
+      "files": [],
+      "expectations": [
+        "A new feature folder under .wise/specs/ contains SPEC.md, API-CONTRACTS.md, and TEST-SPEC.md",
+        "Neither ENTITIES.md nor USE-CASES.md was created",
+        "Running scripts/validate.ts against the new feature folder reports 'Found 0 error(s)'",
+        "At least one functional requirement explicitly states that forking copies sources/documents but excludes chat history",
+        "At least one functional requirement or edge case addresses who owns the forked copy (the forking user becomes owner of an independent copy)",
+        "No literal '&amp;' appears anywhere in the generated files",
+        "API-CONTRACTS.md and TEST-SPEC.md each contain a '> Part of [SPEC.md]...' backlink referencing the other sibling file",
+        "The response doesn't silently invent conflicting facts about 'workspaces' itself, which has no existing spec bundle in this repo — it either scopes around that gap explicitly or asks"
+      ]
+    }
+  ]
+}
