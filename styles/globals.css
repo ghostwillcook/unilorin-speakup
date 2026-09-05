@@ -1281,8 +1281,8 @@
   --wl-rule: #e5e7eb;
 
   /* The spec's ambient shadow — violet-tinted, never black. */
-  --wl-shadow: 0 24px 48px rgb(16 2 111 / 0.08);
-  --wl-shadow-lift: 0 32px 72px rgb(16 2 111 / 0.14);
+  --wl-shadow: 0 10px 24px rgb(16 2 111 / 0.07);
+  --wl-shadow-lift: 0 18px 40px rgb(16 2 111 / 0.12);
 
   /* Radius standard: pills are 999px (on the buttons below), structural
      cards 24-32px. */
@@ -1476,7 +1476,10 @@
   background: #ffffff;
   border-radius: var(--wl-r-card);
   box-shadow: var(--wl-shadow);
-  border: 1px solid rgb(16 2 111 / 0.05);
+  /* 10% violet edge: the old 5% border was invisible next to the white card,
+     so adjacent cards in a grid read as one connected glass mass — the border
+     is what lets each casing read as its own pill. */
+  border: 1px solid rgb(16 2 111 / 0.1);
 }
 .wl-card-hover {
   transition:

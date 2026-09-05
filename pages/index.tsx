@@ -346,7 +346,11 @@ function BentoGrid() {
         </h2>
       </Reveal>
 
-      <Stagger step={100} className="mt-12 grid gap-5 lg:grid-cols-3">
+      {/* gap-6 rather than gap-5: the cards' shadow halos are ~24px, and a
+          20px gap let adjacent halos overlap into a continuous bridge — the
+          "blobbed together" glass look. 24px keeps each card's shadow inside
+          its own cell. */}
+      <Stagger step={100} className="mt-12 grid gap-6 lg:grid-cols-3">
         {/* Status journey — the widest card, because it is the core promise. */}
         <div className="wl-card wl-card-hover scroll-mt-24 p-7 lg:col-span-2" id="complaints">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -509,7 +513,7 @@ function NumberedFeatures() {
         </h2>
       </Reveal>
 
-      <Stagger step={100} className="mt-12 grid gap-5 md:grid-cols-3">
+      <Stagger step={100} className="mt-12 grid gap-6 md:grid-cols-3">
         {steps.map((s) => (
           <article key={s.n} className={`wl-feature ${s.cls}`}>
             <span className="wl-feature-tag">{s.tag}</span>
@@ -579,7 +583,7 @@ function StatsBand() {
 
   return (
     <section className="mx-auto w-full max-w-6xl px-5 pb-20 sm:pb-24">
-      <Stagger step={100} className="grid gap-5 md:grid-cols-3">
+      <Stagger step={100} className="grid gap-6 md:grid-cols-3">
         {stats.map((s) => (
           <div key={s.badge} className="wl-card wl-card-hover p-7">
             <span className={`wl-badge-angle ${s.badgeCls}`}>{s.badge}</span>
