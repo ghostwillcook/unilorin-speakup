@@ -204,7 +204,7 @@ function Hero() {
     <section className="mx-auto w-full max-w-6xl px-5 pb-10 pt-10 sm:pt-14">
       {/* px-4 on phones: the kicker is nowrap at this width, and every
           horizontal millimetre is text that no longer has to break. */}
-      <div className="wl-hero wl-on-violet px-4 py-16 text-center sm:px-12 sm:py-24">
+      <div className="wl-hero wl-on-violet px-4 py-16 text-center sm:px-12 sm:py-24" data-tilt-scene>
         {/* Floating objects — hidden below md where they would collide with the
             headline rather than frame it. */}
         <ParallaxObject
@@ -212,7 +212,7 @@ function Hero() {
           className="absolute -left-6 top-10 hidden w-24 md:block lg:-left-10 lg:w-28"
         >
           <span className="wl-float block" style={{ "--wl-tilt": "-10deg" } as React.CSSProperties}>
-            <SpeechBubbleShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><SpeechBubbleShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
         </ParallaxObject>
 
@@ -221,7 +221,7 @@ function Hero() {
           className="absolute -right-8 top-6 hidden w-24 md:block lg:-right-14 lg:w-32"
         >
           <span className="wl-float wl-float-slow block" style={{ "--wl-tilt": "12deg" } as React.CSSProperties}>
-            <MegaphoneShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><MegaphoneShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
         </ParallaxObject>
 
@@ -230,7 +230,7 @@ function Hero() {
           className="absolute -bottom-8 left-8 hidden w-16 lg:block"
         >
           <span className="wl-float wl-float-slow block" style={{ "--wl-tilt": "-6deg" } as React.CSSProperties}>
-            <HeartShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><HeartShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
         </ParallaxObject>
 
@@ -239,7 +239,7 @@ function Hero() {
           className="absolute -bottom-10 right-14 hidden w-20 lg:block"
         >
           <span className="wl-float block" style={{ "--wl-tilt": "8deg" } as React.CSSProperties}>
-            <ShieldShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><ShieldShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
         </ParallaxObject>
 
@@ -250,14 +250,16 @@ function Hero() {
           className="absolute -right-6 bottom-16 hidden w-36 rotate-3 lg:block"
         >
           <span className="wl-float block rounded-2xl">
-            <Image
-              src="/campus-hero.webp"
-              alt=""
-              aria-hidden="true"
-              width={288}
-              height={216}
-              className="h-auto w-full rounded-2xl border-4 border-white/90 object-cover shadow-[0_24px_48px_rgba(16,2,111,0.35)]"
-            />
+            <span className="wl-tilt" data-tilt>
+              <Image
+                src="/campus-hero.webp"
+                alt=""
+                aria-hidden="true"
+                width={288}
+                height={216}
+                className="h-auto w-full rounded-2xl border-4 border-white/90 object-cover shadow-[0_24px_48px_rgba(16,2,111,0.35)]"
+              />
+            </span>
           </span>
         </ParallaxObject>
 
@@ -862,7 +864,7 @@ function FaqSection() {
 function CtaBanner() {
   return (
     <section className="mx-auto w-full max-w-6xl px-5 pb-24">
-      <div className="wl-hero wl-on-violet relative flex flex-col items-start gap-8 overflow-hidden p-10 sm:p-14 lg:flex-row lg:items-center lg:justify-between">
+      <div className="wl-hero wl-on-violet relative flex flex-col items-start gap-8 overflow-hidden p-10 sm:p-14 lg:flex-row lg:items-center lg:justify-between" data-tilt-scene>
         <div className="relative max-w-xl">
           <h2 className="wl-h2 text-white">
             Your voice reaches further here.
@@ -885,13 +887,13 @@ function CtaBanner() {
             the banner is a single column and they would sit on the text. */}
         <div className="pointer-events-none relative hidden h-44 w-64 flex-none lg:block" aria-hidden="true">
           <span className="wl-float absolute left-6 top-0 block w-20">
-            <SphereShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><SphereShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
           <span className="wl-float wl-float-slow absolute bottom-2 left-16 block w-16">
-            <RingShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><RingShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
           <span className="wl-float absolute right-8 top-8 block w-16">
-            <HeartShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" />
+            <span className="wl-tilt" data-tilt><HeartShape className="block h-auto w-full drop-shadow-[0_24px_48px_rgba(16,2,111,0.35)]" /></span>
           </span>
         </div>
       </div>

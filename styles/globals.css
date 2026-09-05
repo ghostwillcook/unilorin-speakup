@@ -1663,6 +1663,24 @@
   animation-duration: 9.5s;
 }
 
+/* 3D cursor tilt — the diorama objects lean toward the pointer. One
+   mousemove listener on the scene (.wl-hero, wired by Interactions.tsx)
+   sets --wl-rx / --wl-ry (degrees) and --wl-ts (proximity scale) per
+   [data-tilt] child; the shapes themselves keep pointer-events: none, so
+   nothing decorative can intercept a click. Self-contained perspective()
+   means no ancestor needs transform-style, and the transform lives on its
+   own element so it composes with the parallax (outer) and float (inner)
+   transforms rather than fighting them. The 0.6s transition is the point:
+   continuously-updated values eased over time produce the fluid,
+   heavier-than-air lag the clay objects should have. */
+.wl-tilt {
+  display: block;
+  transform: perspective(700px) rotateX(var(--wl-ry, 0deg))
+    rotateY(var(--wl-rx, 0deg)) scale(var(--wl-ts, 1));
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
 /* --- Pills, chips, tags -------------------------------------------------------- */
 .wl-pill {
   display: inline-flex;
@@ -2284,6 +2302,10 @@
 @media (prefers-reduced-motion: reduce) {
   .wl-float {
     animation: none !important;
+  }
+  .wl-tilt {
+    transform: none !important;
+    transition: none !important;
   }
   /* The fold-away still functions (the header ends up where it belongs), only
      the slide becomes a jump — consistent with how every other transition is
