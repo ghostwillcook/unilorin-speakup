@@ -1426,7 +1426,9 @@
   transform: translateY(-2px);
 }
 .wl-btn-violet:active {
-  transform: translateY(0);
+  /* Scale joins the existing Y reset: the button settles 3% smaller for the
+     instant it is held — press feedback the finger can feel. */
+  transform: translateY(0) scale(0.97);
 }
 
 .wl-btn-outline {
@@ -1801,6 +1803,183 @@
   .wl-btn-violet {
     padding: 0.5rem 1.05rem;
     font-size: 0.85rem;
+  }
+}
+
+/* --- Interaction layer: magnetic, shine, spotlight, underline, ghost ---------------------- */
+/* The premium micro-interaction pass. All of it is progressive enhancement:
+   nothing changes layout, every animation is transform/opacity/box-shadow
+   only, and prefers-reduced-motion turns each effect off at the bottom of
+   the block. Cursor tracking for .wl-spotlight and [data-magnetic] lives in
+   components/landing/Interactions.tsx — one wiring pass, CSS does the rest. */
+
+/* Nav + inline links: the underline draws in from the left like a pen
+   stroke, on top of the existing color shift. */
+.wl-underline {
+  position: relative;
+  text-decoration: none;
+}
+.wl-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 1.5px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wl-underline:hover::after,
+.wl-underline:focus-visible::after {
+  transform: scaleX(1);
+}
+
+/* CTA shine: a soft light streak sweeps across the pill on hover. Two
+   variants because the two CTA colors sit on opposite grounds — a white
+   streak would vanish on the white hero button, a violet one would mud the
+   violet header button. */
+.wl-shine,
+.wl-shine-violet {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.wl-shine::after,
+.wl-shine-violet::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.wl-shine::after {
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.25) 50%,
+    transparent 70%
+  );
+}
+.wl-shine-violet::after {
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgb(16 2 111 / 0.1) 50%,
+    transparent 70%
+  );
+}
+.wl-shine:hover::after,
+.wl-shine:focus-visible::after,
+.wl-shine-violet:hover::after,
+.wl-shine-violet:focus-visible::after {
+  transform: translateX(120%);
+}
+
+/* Magnetic: the wrapper drifts toward the cursor (Interactions.tsx sets
+   --mx/--my). Wrapping is deliberate — the button inside keeps its own
+   hover lift, so the two transforms compose instead of fighting. */
+.wl-magnetic {
+  display: inline-block;
+  transform: translate3d(var(--mx, 0px), var(--my, 0px), 0);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* Spotlight: the card's violet border brightens where the cursor is — the
+   light-theme reading of the Linear card glow. A mask keeps the gradient a
+   1px ring over the card's own border, never a wash over the content. */
+.wl-spotlight {
+  position: relative;
+}
+.wl-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(
+    180px circle at var(--mx, 50%) var(--my, 50%),
+    rgb(16 2 111 / 0.55),
+    rgb(16 2 111 / 0.12) 60%,
+    transparent 75%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.wl-spotlight:hover::before,
+.wl-spotlight:focus-within::before {
+  opacity: 1;
+}
+
+/* Hero kicker dot: the one ambient life sign in the diorama — a slow
+   breathe, scoped to the violet surfaces so section kickers stay still. */
+@keyframes wl-dot-breathe {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.wl-on-violet .wl-kicker-dot {
+  animation: wl-dot-breathe 2.6s ease-in-out infinite;
+}
+
+/* Footer ghost wordmark — the page's closing signature. Giant display
+   "UNILORIN" bleeding off both edges behind the footer content, clipped by
+   the footer's own overflow. The footer needs position + overflow for it. */
+.wl-footer-ghost {
+  position: absolute;
+  left: 50%;
+  bottom: -0.16em;
+  transform: translateX(-50%);
+  font-family: var(--wl-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(4rem, 15vw, 13rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  color: var(--wl-violet);
+  opacity: 0.05;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Reduced motion: every effect above is decoration, so each one switches
+   off cleanly — the streaks are removed rather than frozen (a frozen
+   translateX(-120%) is fine, but display:none also kills the hover sweep a
+   reduced-motion user never asked for), the magnetic wrapper stops
+   translating, the spotlight ring disappears, and the dot stops breathing. */
+@media (prefers-reduced-motion: reduce) {
+  .wl-underline::after {
+    transform: scaleX(1) !important;
+    transition: none !important;
+  }
+  .wl-shine::after,
+  .wl-shine-violet::after {
+    display: none !important;
+  }
+  .wl-magnetic {
+    transform: none !important;
+    transition: none !important;
+  }
+  .wl-spotlight::before {
+    display: none !important;
+  }
+  .wl-on-violet .wl-kicker-dot {
+    animation: none !important;
   }
 }
 

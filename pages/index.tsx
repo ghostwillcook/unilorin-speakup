@@ -6,6 +6,7 @@ import { UnilorinLogo, SpeakUpWordmark } from "@/components/Logo";
 import { Marquee, Reveal, Stagger, WordLines } from "@/components/Motion";
 import CountUp from "@/components/landing/CountUp";
 import Faq from "@/components/landing/Faq";
+import LandingInteractions from "@/components/landing/Interactions";
 import {
   HeartShape,
   MegaphoneShape,
@@ -46,7 +47,16 @@ export default function Home() {
       >
         <SiteHeader />
 
-        <main className="flex-1">
+        {/* Null-rendering: wires the cursor-tracked effects (spotlight cards,
+            magnetic CTA) once, after hydration. */}
+        <LandingInteractions />
+
+        {/* overflow-x-clip: the hero's floating objects and the Visit panels'
+            entrance transform deliberately extend past the viewport edge, and
+            those invisible slivers used to open a 4px horizontal scroll on
+            phones. clip (not hidden — no scroll container is created) trims
+            only what is already off-screen; every visible overhang stays. */}
+        <main className="flex-1 overflow-x-clip">
           <Hero />
           <TickerBand />
           <BentoGrid />
@@ -103,7 +113,7 @@ function SiteHeader() {
 
         <nav className="hidden items-center gap-6 md:flex" aria-label="Sections">
           {NAV.map((item) => (
-            <a key={item.href} href={item.href} className="wl-nav-link">
+            <a key={item.href} href={item.href} className="wl-nav-link wl-underline">
               {item.label}
             </a>
           ))}
@@ -117,7 +127,9 @@ function SiteHeader() {
           <Link href="/welcome" className="wl-btn-ghost hidden md:inline-flex">
             Log in
           </Link>
-          <Link href="/welcome" className="wl-btn-violet whitespace-nowrap">
+          {/* The shine streak is violet-tinted: the button is white, so a
+              white streak would sweep invisibly. */}
+          <Link href="/welcome" className="wl-btn-violet wl-shine whitespace-nowrap">
             Get started
           </Link>
 
@@ -275,22 +287,27 @@ function Hero() {
 
           <Reveal delay={240}>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                href="/welcome"
-                className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[0.9375rem] font-bold text-[var(--wl-violet)] shadow-[0_24px_48px_rgb(16_2_111/0.28)] transition-transform duration-150 hover:-translate-y-0.5"
-              >
-                Get started
-                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M5 12h14M13 6l6 6-6 6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                </svg>
-              </Link>
+              {/* The magnetic wrapper and the button's own hover lift are
+                  separate elements on purpose — the two transforms compose
+                  instead of overwriting each other. */}
+              <span data-magnetic className="wl-magnetic">
+                <Link
+                  href="/welcome"
+                  className="wl-shine-violet inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[0.9375rem] font-bold text-[var(--wl-violet)] shadow-[0_24px_48px_rgb(16_2_111/0.28)] transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.97] active:transition-transform active:duration-100"
+                >
+                  Get started
+                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M5 12h14M13 6l6 6-6 6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                  </svg>
+                </Link>
+              </span>
               <a href="#how-it-works" className="wl-btn-outline">
                 See how it works
               </a>
@@ -316,6 +333,11 @@ function TickerBand() {
           "A reply you can read",
           "Direct line to Student Affairs",
           "Evidence stays private",
+          "Three ways to raise it",
+          "Open online, 24/7",
+          "Every voice on the record",
+          "Resolution you can point to",
+          "Built for UNILORIN students",
         ]}
         seconds={30}
         className="text-sm font-semibold"
@@ -352,7 +374,7 @@ function BentoGrid() {
           its own cell. */}
       <Stagger step={100} className="mt-12 grid gap-6 lg:grid-cols-3">
         {/* Status journey — the widest card, because it is the core promise. */}
-        <div className="wl-card wl-card-hover scroll-mt-24 p-7 lg:col-span-2" id="complaints">
+        <div className="wl-card wl-card-hover wl-spotlight scroll-mt-24 p-7 lg:col-span-2" data-spotlight id="complaints">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="wl-h3 text-xl">Follow your complaint</h3>
             <div className="flex items-center gap-1.5" aria-hidden="true">
@@ -387,7 +409,7 @@ function BentoGrid() {
         </div>
 
         {/* Anonymous chat */}
-        <div className="wl-card wl-card-hover scroll-mt-24 p-7" id="chat">
+        <div className="wl-card wl-card-hover wl-spotlight scroll-mt-24 p-7" data-spotlight id="chat">
           <h3 className="wl-h3 text-xl">Anonymous by default</h3>
           <p className="mt-3 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
             In the anonymous room you are a number, never a name — to other students,
@@ -409,7 +431,7 @@ function BentoGrid() {
         </div>
 
         {/* Evidence */}
-        <div className="wl-card wl-card-hover p-7">
+        <div className="wl-card wl-card-hover wl-spotlight p-7" data-spotlight>
           <h3 className="wl-h3 text-xl">Evidence, kept private</h3>
           <p className="mt-3 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
             Attach up to five files per complaint. They sit in a private store —
@@ -585,7 +607,7 @@ function StatsBand() {
     <section className="mx-auto w-full max-w-6xl px-5 pb-20 sm:pb-24">
       <Stagger step={100} className="grid gap-6 md:grid-cols-3">
         {stats.map((s) => (
-          <div key={s.badge} className="wl-card wl-card-hover p-7">
+          <div key={s.badge} className="wl-card wl-card-hover wl-spotlight p-7" data-spotlight>
             <span className={`wl-badge-angle ${s.badgeCls}`}>{s.badge}</span>
             <CountUp
               value={s.value}
@@ -669,7 +691,7 @@ function CategoryMasonry() {
       <div className="mt-12 columns-1 gap-6 sm:columns-2 lg:columns-3">
         {categories.map((c, i) => (
           <Reveal key={c.title} delay={i * 60} className="mb-6 break-inside-avoid">
-            <div className="wl-card wl-card-hover p-6">
+            <div className="wl-card wl-card-hover wl-spotlight p-6" data-spotlight>
               <h3 className="wl-h3 text-lg">{c.title}</h3>
               <p className="mt-2.5 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
                 {c.body}
@@ -883,8 +905,14 @@ function CtaBanner() {
 
 function SiteFooter() {
   return (
-    <footer className="border-t border-[var(--wl-rule)] bg-white/60">
-      <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 text-center sm:flex-row sm:text-left">
+    // relative + overflow-hidden carry the ghost wordmark: giant "UNILORIN"
+    // bleeding off both edges behind the content, clipped at the footer's
+    // own bounds so it never pushes layout or escapes sideways.
+    <footer className="relative overflow-hidden border-t border-[var(--wl-rule)] bg-white/60">
+      <span className="wl-footer-ghost" aria-hidden="true">
+        UNILORIN
+      </span>
+      <div className="relative mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 text-center sm:flex-row sm:text-left">
         {/* The crest is a bordered disc, which reads heavy next to two stacked
             caption lines — size 24 (smaller than the header's 34) plus a
             wider gap keeps the lockup from feeling fused into one blob. */}
