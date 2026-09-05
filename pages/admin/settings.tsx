@@ -601,7 +601,141 @@ export default function AdminSettings({ user }: Props) {
           </p>
         </div>
       </form>
+
+      {/* Deliberately OUTSIDE the settings form: this card is an action, not a
+          setting — submitting it must never submit (or be blocked by the
+          dirty-state of) the platform settings above. The Unit's real-world
+          entry point: a student at the desk (or on the phone) reads out their
+          email or matric number, and the admin sends the reset without
+          leaving the console. The student's side of the flow is identical to
+          the public forgot-password page. */}
+      <PasswordResetCard />
     </AdminLayout>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* Password reset — action card                                              */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * An admin perk the public flow deliberately does not have: identify the
+ * student by email OR matric number (the public route accepts only the
+ * account's own email). Success keeps the admin on this page — the student
+ * does their half from the emailed link, exactly like a self-requested reset.
+ */
+function PasswordResetCard() {
+  const [identifier, setIdentifier] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<
+    | { kind: "success"; text: string }
+    | { kind: "warn"; text: string }
+    | { kind: "error"; text: string }
+    | null
+  >(null);
+
+  async function sendReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (sending) return;
+
+    const trimmed = identifier.trim();
+    if (!trimmed) {
+      setResult({ kind: "error", text: "Enter the student's email or matric number." });
+      return;
+    }
+
+    setResult(null);
+    setSending(true);
+    try {
+      const res = await fetch("/api/admin/users/reset-by-identifier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: trimmed }),
+      });
+      const body: unknown = await res.json().catch(() => null);
+
+      if (res.ok && isRecord(body) && body.ok === true) {
+        const emailSent = body.emailSent === true;
+        const recipient = isRecord(body.recipient) ? body.recipient : null;
+        const name = typeof recipient?.name === "string" ? recipient.name : "the student";
+        const email = typeof recipient?.email === "string" ? recipient.email : "";
+        setResult(
+          emailSent
+            ? { kind: "success", text: `Reset link sent to ${name}${email ? ` (${email})` : ""}. They have 60 minutes to use it.` }
+            : { kind: "warn", text: `A reset link was created for ${name}, but the email could not be delivered — check the email configuration.` },
+        );
+        if (emailSent) setIdentifier("");
+      } else {
+        setResult({
+          kind: "error",
+          text:
+            (isRecord(body) && typeof body.error === "string" && body.error) ||
+            "The reset could not be sent. Try again.",
+        });
+      }
+    } catch {
+      setResult({
+        kind: "error",
+        text: "Network error — check your connection and try again.",
+      });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <GlassCard className="mt-5 overflow-hidden">
+      <PanelHeader
+        title="Password reset"
+        subtitle="Email a student a password reset link — by email or matric number."
+      />
+
+      <form onSubmit={sendReset} className="px-5 py-5">
+        <label className="field-label" htmlFor="reset-identifier">
+          Student&apos;s email or matric number
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            id="reset-identifier"
+            type="text"
+            className="field max-w-md flex-1"
+            placeholder="e.g. aisha.bello@students.unilorin.edu.ng or 19/52HA001"
+            value={identifier}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setIdentifier(e.target.value)}
+            disabled={sending}
+            aria-describedby="reset-identifier-help"
+            autoComplete="off"
+          />
+          <NeonButton type="submit" loading={sending} disabled={sending}>
+            Send reset link
+          </NeonButton>
+        </div>
+        <p id="reset-identifier-help" className="mt-2 text-sm text-muted">
+          The student receives the same email as the forgot-password page: one
+          link, valid for 60 minutes, single use. A copy of this action is
+          recorded in your notifications.
+        </p>
+
+        {result?.kind === "success" && (
+          <div className="notice mt-4" role="status">
+            <span aria-hidden="true">✓</span>
+            <span className="flex-1">{result.text}</span>
+          </div>
+        )}
+        {result?.kind === "warn" && (
+          <div className="notice notice-warn mt-4" role="status">
+            <span aria-hidden="true">⚠</span>
+            <span className="flex-1">{result.text}</span>
+          </div>
+        )}
+        {result?.kind === "error" && (
+          <div className="notice notice-error mt-4" role="alert">
+            <span aria-hidden="true">✕</span>
+            <span className="flex-1">{result.text}</span>
+          </div>
+        )}
+      </form>
+    </GlassCard>
   );
 }
 
