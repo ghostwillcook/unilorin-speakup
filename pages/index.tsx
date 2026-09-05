@@ -662,9 +662,13 @@ function CategoryMasonry() {
         </h2>
       </Reveal>
 
-      <div className="mt-12 columns-1 gap-5 sm:columns-2 lg:columns-3">
+      {/* gap-6 + mb-6, same reasoning as the bento grid above: measured on a
+          390px viewport, the old 20px spacing let each card's shadow halo
+          (≈22px reach) bridge to the next, so the seven stacked cards read
+          as one connected glass chain. */}
+      <div className="mt-12 columns-1 gap-6 sm:columns-2 lg:columns-3">
         {categories.map((c, i) => (
-          <Reveal key={c.title} delay={i * 60} className="mb-5 break-inside-avoid">
+          <Reveal key={c.title} delay={i * 60} className="mb-6 break-inside-avoid">
             <div className="wl-card wl-card-hover p-6">
               <h3 className="wl-h3 text-lg">{c.title}</h3>
               <p className="mt-2.5 text-sm leading-relaxed text-[rgb(17_12_30/0.66)]">
@@ -721,7 +725,7 @@ const VISIT_DETAILS = [
 function VisitTheUnit() {
   return (
     <section id="visit" className="mx-auto w-full max-w-6xl scroll-mt-24 px-5 pb-20 sm:pb-24">
-      <div className="grid items-stretch gap-5 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid items-stretch gap-6 lg:grid-cols-[1.1fr_1fr]">
         <Reveal direction="left" className="h-full">
           <figure className="wl-card h-full p-2.5">
             <div className="relative h-64 overflow-hidden rounded-2xl sm:h-80 lg:h-[24rem]">

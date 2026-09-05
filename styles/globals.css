@@ -1281,8 +1281,11 @@
   --wl-rule: #e5e7eb;
 
   /* The spec's ambient shadow — violet-tinted, never black. */
-  --wl-shadow: 0 10px 24px rgb(16 2 111 / 0.07);
-  --wl-shadow-lift: 0 18px 40px rgb(16 2 111 / 0.12);
+  /* 16px blur, not 24: measured, the halo's effective reach (~offset+blur/2)
+     must stay under the 24px grid gaps or adjacent cards' shadows bridge the
+     gap and the cards read as one connected glass mass. */
+  --wl-shadow: 0 8px 16px rgb(16 2 111 / 0.07);
+  --wl-shadow-lift: 0 14px 28px rgb(16 2 111 / 0.12);
 
   /* Radius standard: pills are 999px (on the buttons below), structural
      cards 24-32px. */
