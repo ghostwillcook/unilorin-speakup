@@ -102,15 +102,15 @@ export default async function handler(
     });
 
     // The password change is committed; the confirmation email is advisory —
-    // it exists so a stolen reset link doesn't go silently, but its failure
-    // must not 500 the request after the fact. Detached send, same shape as
-    // the push fan-out in pages/api/admin/notifications.ts.
-    setImmediate(() => {
-      void sendEmail({
-        ...passwordChangedEmail(user.name),
-        to: user.email,
-      }).catch(() => {});
-    });
+    // it exists so a stolen reset link doesn't go silently. AWAITED rather
+    // than detached (see the matching comment in forgot-password.ts): the
+    // serverless runtime freezes on response, so a setImmediate send is a
+    // race it sometimes loses. sendEmail never throws; the .catch keeps an
+    // advisory email from failing an already-committed password change.
+    await sendEmail({
+      ...passwordChangedEmail(user.name),
+      to: user.email,
+    }).catch(() => {});
 
     res.setHeader("Cache-Control", "no-store, max-age=0");
     res.status(200).json({ message: "Your password has been changed." });

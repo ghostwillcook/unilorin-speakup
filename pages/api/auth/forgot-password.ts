@@ -106,17 +106,19 @@ export default async function handler(
     const token = await createResetToken(user.id);
     const resetUrl = `${appBaseUrl()}/auth/reset-password?token=${token}`;
 
-    // Detached, mirroring the push fan-out in pages/api/admin/notifications.ts:
-    // by this point the token row is committed, so a Resend failure must not
-    // turn into a 500 the client would read as "request failed" (and retry,
-    // invalidating this link). sendEmail itself never throws; the .catch is
-    // safety symmetry with that file, not an expectation.
-    setImmediate(() => {
-      void sendEmail({
-        ...resetRequestEmail(user.name, resetUrl, TOKEN_TTL_MINUTES),
-        to: user.email,
-      }).catch(() => {});
-    });
+    // AWAITED, not detached: on serverless (Netlify Functions / Lambda) the
+    // execution environment freezes as soon as the response is returned, so a
+    // setImmediate send is a race it sometimes loses — the token row lands but
+    // the email never goes out (seen in production: first test delivered, a
+    // later identical request silently dropped). Awaiting costs one Resend
+    // round-trip (~500ms) and guarantees the send happens inside the
+    // invocation. sendEmail never throws; the .catch keeps a Resend outage
+    // from turning into a 500 the client would read as "request failed" (and
+    // retry, invalidating this link) — the token row is the source of truth.
+    await sendEmail({
+      ...resetRequestEmail(user.name, resetUrl, TOKEN_TTL_MINUTES),
+      to: user.email,
+    }).catch(() => {});
 
     res.setHeader("Cache-Control", "no-store, max-age=0");
     res.status(200).json({
