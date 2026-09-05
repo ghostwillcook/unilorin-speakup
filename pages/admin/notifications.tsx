@@ -666,8 +666,10 @@ function StudentLookup({
   const [busy, setBusy] = useState(false);
   const [miss, setMiss] = useState<string | null>(null);
 
-  async function find(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  /** No event argument anymore: with the nested form gone, there is nothing
+   *  to preventDefault on — Enter is intercepted at the input (see below) and
+   *  the button calls this directly. */
+  async function find(): Promise<void> {
     const query = identifier.trim();
     if (!query || busy) return;
 
@@ -715,11 +717,15 @@ function StudentLookup({
   }
 
   return (
+    // NOT a <form>: this component renders inside the composer's form, and a
+    // nested form's submit event bubbles up to the outer onSubmit — clicking
+    // "Find student" was firing send(), which either errored on the missing
+    // selection or, worse, sent the notification to the PREVIOUSLY selected
+    // student mid-lookup and wiped the composer via finishSend. A plain div
+    // with an explicit button click (plus Enter handling below) cannot
+    // submit anything.
     <div className="rounded-xl border border-line bg-veil px-4 py-4">
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(event) => void find(event)}
-      >
+      <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
           <label className="field-label" htmlFor="notification-lookup">
             Anonymous ID or matric number
@@ -730,6 +736,14 @@ function StudentLookup({
             className="field"
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                // Explicit preventDefault: without a form, Enter would still
+                // submit the ANCESTOR composer form from this input.
+                event.preventDefault();
+                void find();
+              }
+            }}
             placeholder="Anonymous #42 or 19/52HL123"
             autoComplete="off"
           />
@@ -737,14 +751,15 @@ function StudentLookup({
         {/* Ghost, not solid: the composer's Send button is the screen's one
             loud element. */}
         <NeonButton
-          type="submit"
+          type="button"
           variant="ghost"
           loading={busy}
           disabled={!identifier.trim()}
+          onClick={() => void find()}
         >
           Find student
         </NeonButton>
-      </form>
+      </div>
 
       {miss && (
         <p className="mt-3 text-sm text-warn" role="status">
@@ -754,8 +769,15 @@ function StudentLookup({
 
       {target && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <span className="badge badge-neutral">
-            {target.name} · {target.studentId}
+          {/* The checkmark makes "found" a visible state, not just a chip
+              appearing: the admin can see the selection is locked in before
+              reaching for Send. */}
+          <span
+            className="badge border border-emerald-600/25 bg-emerald-500/10 text-emerald-700"
+            role="status"
+          >
+            <span aria-hidden="true">✓</span> Found: {target.name} ·{" "}
+            {target.studentId}
             {target.anonymousId ? ` · ${target.anonymousId}` : ""}
           </span>
           <button
