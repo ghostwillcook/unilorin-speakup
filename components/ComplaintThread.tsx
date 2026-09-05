@@ -171,7 +171,19 @@ export default function ComplaintThread({
           if (message) parsed.push(message);
         }
         parsed.sort(byTime);
-        setMessages(parsed);
+        // Merge rather than replace: the response is the full thread, but a
+        // complaint:new may have arrived while the request was in flight,
+        // and a wholesale setMessages would wipe that row when the response
+        // lands. Any local row missing from the response is genuinely newer
+        // (or the same row), so a union keyed by id is always safe. (The
+        // setMessages([]) at the top of this effect already fenced out the
+        // previous complaint's rows, so `prev` can only hold this
+        // complaint's — or rows merged for it after the clear.)
+        setMessages((prev) => {
+          const byId = new Map(prev.map((row) => [row.id, row]));
+          for (const row of parsed) byId.set(row.id, row);
+          return [...byId.values()].sort(byTime);
+        });
         setError(null);
       } catch {
         if (active) {

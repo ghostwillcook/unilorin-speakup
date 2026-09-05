@@ -115,6 +115,8 @@ export default async function handler(
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: MESSAGE_FIELDS,
       });
+      // Personal data: never store it in a shared or browser cache.
+      res.setHeader("Cache-Control", "no-store, max-age=0");
       res.status(200).json({ messages: rows.map(toMessage) });
       return;
     }

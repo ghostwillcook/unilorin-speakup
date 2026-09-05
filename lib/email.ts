@@ -26,6 +26,14 @@ export function isEmailConfigured(): boolean {
 /**
  * From-address for every outgoing email. Defaults to Resend's shared
  * onboarding address so local testing works without a verified domain.
+ *
+ * GUARD: that fallback is Resend's restricted sandbox sender — it is only
+ * allowed to deliver to the email address that OWNS the Resend account.
+ * In any deploy that has not set EMAIL_FROM (with a verified domain), every
+ * "successfully sent" email to a real student address is silently discarded
+ * by Resend on arrival. EMAIL_FROM must be set to a domain-verified sender
+ * before this app is used by real students; the fallback is a local-dev
+ * convenience only, never a production configuration.
  */
 export function emailFrom(): string {
   return (
@@ -56,7 +64,9 @@ interface SendEmailArgs {
  * Sends one email. Lazily builds the Resend client (module-level cache, same
  * shape as getSupabaseAdmin) so merely importing this module does nothing.
  * Returns { ok: true } or { ok: false, error } — NEVER throws; see the
- * module doc comment for why.
+ * module doc comment for why. Failure returns are console.error'd with a
+ * [student-connect:email] prefix so the swallow is observable in the logs
+ * without any call site changing behavior.
  */
 export async function sendEmail({
   to,
@@ -79,13 +89,19 @@ export async function sendEmail({
       text,
     });
     if (error) {
+      // Log-then-report: the { ok: false } contract stays (a failed email
+      // must never become a 500 on top of already-committed side effects),
+      // but swallowing silently made a dead/limited Resend key invisible —
+      // the API kept saying "link sent" while nothing was delivered (the
+      // exact prod incident pages/api/auth/forgot-password.ts documents).
+      // Logging HERE means every call site gains diagnostics at once.
+      console.error("[student-connect:email] send failed:", error.message);
       return { ok: false, error: error.message };
     }
     return { ok: true };
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Unknown email error.",
-    };
+    const message = err instanceof Error ? err.message : "Unknown email error.";
+    console.error("[student-connect:email] send threw:", message);
+    return { ok: false, error: message };
   }
 }

@@ -7,6 +7,7 @@ import {
   requireRole,
 } from "@/lib/guards";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getSettings } from "@/lib/settings";
 
 /**
  * GET   /api/admin/livechat/[id] — one conversation's full message history.
@@ -81,15 +82,14 @@ export default async function handler(
     }
 
     if (req.method === "GET") {
-      const rows = await prisma.liveMessage.findMany({
-        // deletedAt: null — soft-deleted messages stay in the table (audit
-        // trail) but must not render in the thread.
-        where: { conversationId, deletedAt: null },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: MESSAGE_FIELDS,
-      });
-
-      // Read-on-open: the admin has seen these, so the inbox badge clears.
+      // Read-on-open BEFORE the fetch, not after (mirroring the student twin
+      // /api/livechat): the writes and the findMany are three separate queries,
+      // and a student message committed between a fetch-first read and the
+      // mark-read would be stamped read by a request that never showed it to
+      // anyone — the admin opens the thread and the message is just gone.
+      // Mark-first closes the window: anything committed after the updateMany
+      // stays unread (readAt null) and IS returned by the findMany below, so
+      // the worst case is the badge lagging one message, never a silent skip.
       await prisma.liveMessage.updateMany({
         where: { conversationId, senderRole: "STUDENT", readAt: null },
         data: { readAt: new Date() },
@@ -99,6 +99,16 @@ export default async function handler(
         data: { adminUnread: 0 },
       });
 
+      const rows = await prisma.liveMessage.findMany({
+        // deletedAt: null — soft-deleted messages stay in the table (audit
+        // trail) but must not render in the thread.
+        where: { conversationId, deletedAt: null },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: MESSAGE_FIELDS,
+      });
+
+      // Personal data: never store it in a shared or browser cache.
+      res.setHeader("Cache-Control", "no-store, max-age=0");
       res.status(200).json({ messages: rows.map(toMessage) });
       return;
     }
@@ -120,8 +130,14 @@ export default async function handler(
         return;
       }
 
-      // Same allowance as the socket twin of this write path.
-      const verdict = checkRateLimit(caller.id);
+      // Same allowance as the socket twin of this write path (livechat:reply
+      // in server/socket.mjs): the admin's chatRateLimitPerMin setting, not
+      // the limiter's blind default. The two paths must share one limit or
+      // the /admin/settings control only sometimes holds — and getSettings
+      // already falls back to the default (20) when the row is missing or
+      // the table is cold, so the absent-setting case keeps today's budget.
+      const settings = await getSettings();
+      const verdict = checkRateLimit(caller.id, settings.chatRateLimitPerMin);
       if (!verdict.ok) {
         res.status(429).json({
           error: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,

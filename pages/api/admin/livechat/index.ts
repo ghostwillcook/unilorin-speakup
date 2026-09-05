@@ -37,6 +37,11 @@ const CONVERSATION_FIELDS = {
   updatedAt: true,
   user: { select: { id: true, name: true, studentId: true } },
   messages: {
+    // deletedAt: null — the preview must point at a message the admin can
+    // still open and read. Without this, deleting the latest bubble leaves
+    // its text sitting in the inbox preview forever, quoting a row every
+    // thread view correctly refuses to render.
+    where: { deletedAt: null },
     orderBy: { createdAt: "desc" },
     take: 1,
     select: { content: true, senderRole: true, createdAt: true },
@@ -104,6 +109,8 @@ export default async function handler(
       select: CONVERSATION_FIELDS,
     });
 
+    // Personal data: never store it in a shared or browser cache.
+    res.setHeader("Cache-Control", "no-store, max-age=0");
     res.status(200).json({ conversations: rows.map(toInbox) });
   });
 }

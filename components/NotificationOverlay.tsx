@@ -34,7 +34,10 @@ interface QueuedNotification {
   createdAt: string;
 }
 
-/** Prefix for locally-generated ids (realtime events carry no row id). */
+/**
+ * Prefix for locally-generated ids — a fallback only, for realtime payloads
+ * that arrive without the notification row id (older socket server builds).
+ */
 const LOCAL_PREFIX = "overlay-";
 let localSeq = 0;
 
@@ -104,6 +107,9 @@ export default function NotificationOverlay() {
         if (queued.length > 0) {
           setQueue((prev) => {
             // De-duplicate against anything already queued from realtime.
+            // Both paths key on the notification's real DB id (the socket
+            // payload carries it), so the same row arriving through both
+            // channels is recognized as one.
             const seen = new Set(prev.map((q) => q.id));
             return [...prev, ...queued.filter((q) => !seen.has(q.id))];
           });
@@ -126,8 +132,17 @@ export default function NotificationOverlay() {
       const body = typeof payload.body === "string" ? payload.body : "";
       if (!title || !body) return;
 
+      // Prefer the notification's real DB row id when the payload carries it
+      // (current socket server builds do), so realtime entries dedupe
+      // against the catch-up fetch's DB ids. The synthetic overlay-<ts> id
+      // is only a fallback for payloads without one.
+      const id =
+        typeof payload.id === "string" && payload.id
+          ? payload.id
+          : `${LOCAL_PREFIX}${Date.now()}-${++localSeq}`;
+
       const entry: QueuedNotification = {
-        id: `${LOCAL_PREFIX}${Date.now()}-${++localSeq}`,
+        id,
         title,
         body,
         createdAt:
@@ -136,13 +151,14 @@ export default function NotificationOverlay() {
             : new Date().toISOString(),
       };
       setQueue((prev) => {
-        // The catch-up path may have already queued this notification from
-        // the database (same title+body arriving through both paths). Merge
-        // by title+body rather than id, since realtime carries no row id.
-        const already = prev.some(
-          (q) => q.title === entry.title && q.body === entry.body,
-        );
-        return already ? prev : [...prev, entry];
+        // De-duplicate against anything already queued from the catch-up
+        // fetch: the same notification can arrive through both paths (row
+        // fetched on mount, then the realtime emit — or vice versa), and
+        // both now speak the same DB row id. Keying on id rather than
+        // title+body also keeps a repeat announcement with identical text
+        // from being wrongly skipped as a duplicate.
+        const seen = new Set(prev.map((q) => q.id));
+        return seen.has(entry.id) ? prev : [...prev, entry];
       });
     }
 

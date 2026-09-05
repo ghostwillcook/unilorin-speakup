@@ -34,7 +34,7 @@
  *         complaint:deleted     { id }                to complaint:<id>
  *         livechat:new          LiveMessage           to live:<conversationId>
  *         livechat:deleted      { id }                to live:<conversationId>
- *         notification:new      { title, body }       to user:<id>
+ *         notification:new      { id, title, body, createdAt }  to user:<id>
  *         notification:sent     { count }             to the sending admin
  *         presence              { onlineStudents, onlineAdmins }
  *         session               { pseudonym }         on connect
@@ -1015,16 +1015,40 @@ async function deleteMessage(socket, payload, table, roomPrefix, event) {
     }
 
     // The room key differs per table (conversationId vs complaintId); fetch
-    // the row's parent so the removal reaches the right room.
+    // the row's parent so the removal reaches the right room. senderRole and
+    // readAt ride along on the liveMessage shape to feed the unread-counter
+    // repair below.
     const row = await prisma[table].findUnique({
       where: { id: id.trim() },
       select:
         table === "liveMessage"
-          ? { conversationId: true }
+          ? { conversationId: true, senderRole: true, readAt: true }
           : { complaintId: true },
     });
     if (!row) return;
     const parentId = row.conversationId ?? row.complaintId;
+
+    // Same unread-counter repair as the REST twin (DELETE
+    // /api/livechat/messages/[id]): the inbox badges are denormalized counts,
+    // so soft-deleting a message nobody had read yet must take its count
+    // back out, or the badge stays lit forever pointing at a bubble no view
+    // will ever render again. The `gt: 0` guard floors the decrement — a
+    // drifted counter must not be pushed negative. Complaint threads have no
+    // such counter (their unread dot is an aggregate already filtered by
+    // deletedAt), so this is liveMessage-only.
+    if (table === "liveMessage" && row.readAt === null) {
+      await prisma.liveConversation.updateMany({
+        where:
+          row.senderRole === "STUDENT"
+            ? { id: row.conversationId, adminUnread: { gt: 0 } }
+            : { id: row.conversationId, userUnread: { gt: 0 } },
+        data:
+          row.senderRole === "STUDENT"
+            ? { adminUnread: { decrement: 1 } }
+            : { userUnread: { decrement: 1 } },
+      });
+    }
+
     io.to(`${roomPrefix}:${parentId}`).emit(event, { id: id.trim(), parentId });
   } catch (error) {
     console.error(`[socket] ${event} failed:`, errText(error));
@@ -1083,9 +1107,13 @@ async function handleNotificationSend(socket, payload) {
       });
       return;
     }
-    // No length caps — same policy as the REST twin
-    // (pages/api/admin/notifications.ts): the admin is the trusted author,
-    // the Postgres TEXT column is unlimited, and only non-empty is checked.
+    // No length caps on persistence or realtime — same policy as the REST
+    // twin (pages/api/admin/notifications.ts): the admin is the trusted
+    // author, the Postgres TEXT column is unlimited, and only non-empty is
+    // checked. The Web Push payload is the one exception: pushToRecipients
+    // truncates it to the protocol's ~4KB ceiling (see below), because the
+    // push service would otherwise reject the send with a 413 that nothing
+    // here would surface.
 
     // Rate-limit by the ADMIN's id: broadcast fan-out is expensive (a row +
     // push per student), so an admin's runaway script must not hammer it.
@@ -1113,17 +1141,41 @@ async function handleNotificationSend(socket, payload) {
       return;
     }
 
-    await prisma.notification.createMany({
-      data: recipients.map((r) => ({ userId: r.id, title, body })),
-    });
-
-    for (const recipient of recipients) {
-      const payloadOut = { title, body, createdAt: new Date().toISOString() };
-      io.to(`user:${recipient.id}`).emit("notification:new", payloadOut);
-      await pushToUser(recipient.id, title, body);
+    // Per-recipient create() rather than one createMany: the row id must
+    // ride on the notification:new payload. The overlay dedupes its realtime
+    // entries against its mount-time catch-up fetch, and without a real id
+    // it used to fall back to title+body matching — so the same
+    // notification could display twice, or a repeat announcement (same
+    // title, same text) be wrongly skipped. At this scale (hundreds of
+    // recipients) the extra round-trips over createMany are fine, and the
+    // creates are issued in parallel so the wall time stays one round-trip.
+    const rows = await Promise.all(
+      recipients.map((r) =>
+        prisma.notification.create({ data: { userId: r.id, title, body } }),
+      ),
+    );
+    for (const row of rows) {
+      io.to(`user:${row.userId}`).emit("notification:new", {
+        id: row.id,
+        title,
+        body,
+        // JSON payloads must be serializable; Date objects are not.
+        createdAt: row.createdAt.toISOString(),
+      });
     }
 
-    socket.emit("notification:sent", { count: recipients.length });
+    // Acknowledge as soon as the rows + realtime fan-out are done — that is
+    // what the admin's UI actually waits on. The Web Push loop is detached
+    // (this is a long-lived Render process, not a serverless function, so
+    // there is no freeze-the-invocation hazard like the REST twin's; the
+    // detach only keeps a slow push service from delaying notification:sent)
+    // and its errors are logged, never propagated to the admin.
+    socket.emit("notification:sent", { count: rows.length });
+
+    const recipientIds = rows.map((r) => r.userId);
+    void pushToRecipients(recipientIds, title, body).catch((error) => {
+      console.error("[socket] notification push fan-out failed:", errText(error));
+    });
   } catch (error) {
     console.error("[socket] notification:send failed:", errText(error));
     socket.emit("chat:error", {
@@ -1133,14 +1185,26 @@ async function handleNotificationSend(socket, payload) {
 }
 
 /**
- * Web Push delivery. Best-effort by design: a failing subscription (410 Gone
- * is the standard "uninstalled" signal) is deleted rather than retried, and
- * an error pushing to one device must never block the loop or the realtime
- * emit. Silently a no-op when VAPID keys are absent (the channel degrades to
- * in-app only — the Notification rows and realtime events are the source of
- * truth).
+ * Web Push delivery, batched across every recipient at once (one
+ * subscription query, not one per student — the same shape as the REST
+ * twin's pushToRecipients in pages/api/admin/notifications.ts). Best-effort
+ * by design: a failing subscription (410 Gone is the standard "uninstalled"
+ * signal) is deleted rather than retried, and an error pushing to one
+ * device must never block the loop or the realtime emit. Silently a no-op
+ * when VAPID keys are absent (the channel degrades to in-app only — the
+ * Notification rows and realtime events are the source of truth).
+ *
+ * The payload is truncated to PUSH_TITLE_MAX/PUSH_BODY_MAX characters: the
+ * Web Push protocol has a ~4KB total payload ceiling and answers anything
+ * above it with a 413 that this loop would otherwise swallow invisibly.
+ * The full text always persists in the database and the realtime event —
+ * only the lock-screen preview is clipped. Values mirror the REST twin
+ * exactly so a student sees the same clipping whichever path sent it.
  */
-async function pushToUser(userId, title, body) {
+const PUSH_TITLE_MAX = 100;
+const PUSH_BODY_MAX = 3000;
+
+async function pushToRecipients(userIds, title, body) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   try {
     // web-push is imported lazily: it is optional infrastructure, and a
@@ -1153,7 +1217,7 @@ async function pushToUser(userId, title, body) {
     );
 
     const subs = await prisma.pushSubscription.findMany({
-      where: { userId },
+      where: { userId: { in: userIds } },
     });
     for (const sub of subs) {
       try {
@@ -1162,7 +1226,10 @@ async function pushToUser(userId, title, body) {
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
-          JSON.stringify({ title, body }),
+          JSON.stringify({
+            title: title.slice(0, PUSH_TITLE_MAX),
+            body: body.slice(0, PUSH_BODY_MAX),
+          }),
         );
       } catch (error) {
         // 404/410 = the subscription is dead (uninstalled, expired). Prune;

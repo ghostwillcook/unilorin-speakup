@@ -21,11 +21,35 @@ import {
  */
 
 // The owner's test accounts — they need unlimited resets while testing;
-// production students are not exempt from the daily limit.
-const RESET_LIMIT_EXEMPT_EMAILS = new Set([
-  "iyanuoluwaotaro@gmail.com",
-  "mutmainnahtope@gmail.com",
-]);
+// production students are not exempt from the daily limit. Read from
+// RESET_EXEMPT_EMAILS (comma-separated) so deploy-time overrides don't need a
+// code change; the two seed addresses stay as the fallback so behavior is
+// unchanged where the env var is unset. Lowercased to match the normalized
+// email the route compares against.
+const RESET_LIMIT_EXEMPT_EMAILS = new Set(
+  (process.env.RESET_EXEMPT_EMAILS ??
+    "iyanuoluwaotaro@gmail.com,mutmainnahtope@gmail.com")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+/**
+ * The caller's address, lowercased and trimmed exactly like the email key
+ * above so both limiter keys get identical normalization treatment. Prefers
+ * Netlify's x-nf-client-connection-ip, which the platform injects itself
+ * (not client-overridable like x-forwarded-for, so it cannot be spoofed to
+ * bypass the limiter); falls back to the socket address anywhere else
+ * (local dev, other hosts). Same per-process caveat lib/rate-limit.ts
+ * already documents.
+ */
+function clientIp(req: NextApiRequest): string {
+  const header = req.headers["x-nf-client-connection-ip"];
+  const value = Array.isArray(header) ? header[0] : header;
+  return (value?.trim() || req.socket.remoteAddress || "unknown")
+    .trim()
+    .toLowerCase();
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -52,11 +76,34 @@ export default async function handler(
 
     // Keyed by the (lowercased) email rather than a userId because the caller
     // is anonymous — there is no session to key on. Same in-process limitation
-    // lib/rate-limit.ts documents for its userId keys.
+    // lib/rate-limit.ts documents for its userId keys. This fires BEFORE the
+    // account lookup, so known and unknown addresses are throttled equally —
+    // no oracle here.
     const verdict = checkRateLimit(email);
     if (!verdict.ok) {
       res.status(429).json({
         error: `Too many requests. Try again in ${verdict.retryInSeconds}s.`,
+      });
+      return;
+    }
+
+    // IP-keyed limiter on top of the email-keyed one: the daily cap counts
+    // attacker-minted rows against the victim (6 anonymous requests lock the
+    // real owner out AND email-bomb them), so the blast radius has to be cut
+    // off at the source address. Tighter than the default 20/min — one
+    // legitimate person forgets a password a couple of times a minute at
+    // most. Trips as the SAME generic 200 as everything else: a distinct 429
+    // here would tell a prober which responses mean "an account exists".
+    const ip = clientIp(req);
+    const ipVerdict = checkRateLimit(ip, 10);
+    if (!ipVerdict.ok) {
+      console.error(
+        "[student-connect:forgot-password] IP rate limit tripped — returning generic 200",
+        { ip, retryInSeconds: ipVerdict.retryInSeconds },
+      );
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.status(200).json({
+        message: "If that email has an account, a reset link has been sent.",
       });
       return;
     }
@@ -85,20 +132,26 @@ export default async function handler(
     // first, and only for KNOWN accounts — unknown emails return the generic
     // 200 above untouched.
     //
-    // Trade-off: returning a distinct 429 here reveals the account exists
-    // once 5 requests have been made. Accepted because the per-minute limiter
-    // already blunts enumeration (probing 5+ times per address takes minutes),
-    // a real user locked out of their account needs this specific message,
-    // and the owner spec'd the behavior.
+    // The limit is enforced silently: this branch returns the SAME generic
+    // 200 as the success path, not a distinct 429. A 429 told a prober "this
+    // address has an account once its cap is hit" — an enumeration oracle the
+    // old in-code mitigation comment dismissed by claiming probing takes
+    // minutes, which was wrong (the per-minute limiter allows 20 per 60s, so
+    // 5 probes against one address fit comfortably inside a single window).
+    // The rate-limit hit is logged server-side instead so operators can still
+    // see a locked-out real user; the user themselves gets the same "link
+    // sent" copy everyone gets, which is the price of not leaking existence.
     if (
       !RESET_LIMIT_EXEMPT_EMAILS.has(email) &&
       (await countRecentResetRequests(user.id)) >= RESET_REQUEST_LIMIT
     ) {
+      console.error(
+        "[student-connect:forgot-password] daily reset limit reached for known account — returning generic 200",
+        { userId: user.id },
+      );
       res.setHeader("Cache-Control", "no-store, max-age=0");
-      res.status(429).json({
-        error:
-          "You've reached the daily limit for password reset requests. " +
-          "Please try again tomorrow.",
+      res.status(200).json({
+        message: "If that email has an account, a reset link has been sent.",
       });
       return;
     }
@@ -112,13 +165,23 @@ export default async function handler(
     // the email never goes out (seen in production: first test delivered, a
     // later identical request silently dropped). Awaiting costs one Resend
     // round-trip (~500ms) and guarantees the send happens inside the
-    // invocation. sendEmail never throws; the .catch keeps a Resend outage
-    // from turning into a 500 the client would read as "request failed" (and
-    // retry, invalidating this link) — the token row is the source of truth.
-    await sendEmail({
+    // invocation. sendEmail never throws and reports { ok: false, error }
+    // instead; the failure is logged (a dead Resend key otherwise looks like
+    // "students aren't getting links" with zero trace in the function logs)
+    // but must not change the response: the client contract stays "link sent"
+    // so a transient Resend hiccup doesn't read as "request failed" and
+    // trigger a retry that invalidates this link — the token row is the
+    // source of truth.
+    const sent = await sendEmail({
       ...resetRequestEmail(user.name, resetUrl, TOKEN_TTL_MINUTES),
       to: user.email,
-    }).catch(() => {});
+    }).catch(() => ({ ok: false as const, error: "sendEmail threw unexpectedly." }));
+    if (!sent.ok) {
+      console.error(
+        "[student-connect:forgot-password] reset email failed to send",
+        { to: user.email, error: sent.error },
+      );
+    }
 
     res.setHeader("Cache-Control", "no-store, max-age=0");
     res.status(200).json({

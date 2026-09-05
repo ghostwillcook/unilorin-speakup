@@ -21,16 +21,26 @@ const MAX_PER_WINDOW = 20;
 /** userId -> timestamps of accepted writes inside the window. */
 const hits = new Map<string, number[]>();
 
-export function checkRateLimit(userId: string): {
+/**
+ * `max` lets a caller tighten the ceiling for its route without loosening it
+ * for everyone else: the default 20/min is tuned for signed-in chat writes,
+ * but anonymous entry points (password reset, etc.) want a smaller budget
+ * against abuse that has no account to lose. Omitted `max` keeps the default,
+ * so existing callers are unaffected.
+ */
+export function checkRateLimit(
+  key: string,
+  max: number = MAX_PER_WINDOW,
+): {
   ok: boolean;
   retryInSeconds: number;
 } {
   const now = Date.now();
   const cutoff = now - WINDOW_MS;
-  const recent = (hits.get(userId) ?? []).filter((at) => at > cutoff);
+  const recent = (hits.get(key) ?? []).filter((at) => at > cutoff);
 
-  if (recent.length >= MAX_PER_WINDOW) {
-    hits.set(userId, recent);
+  if (recent.length >= max) {
+    hits.set(key, recent);
     // The oldest hit in the window is the one that has to age out.
     const oldest = recent[0] ?? now;
     const waitMs = oldest + WINDOW_MS - now;
@@ -38,7 +48,7 @@ export function checkRateLimit(userId: string): {
   }
 
   recent.push(now);
-  hits.set(userId, recent);
+  hits.set(key, recent);
 
   // Opportunistic pruning: every call walks one user's array; the map itself
   // needs an occasional sweep or every user who ever posted stays keyed forever.

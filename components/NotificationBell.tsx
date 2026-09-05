@@ -159,10 +159,11 @@ export default function NotificationBell({
   useEffect(() => {
     if (!socket || !userId) return;
 
-    // notification:new carries { title, body, createdAt } but no row id (see
-    // server/socket.mjs), so the handler prepends a provisional row to light
-    // the badge instantly and then refetches — the refetch swaps the provisional
-    // entry for the persisted one with its real id. The same event also raises
+    // notification:new carries the row's DB id now (see server/socket.mjs),
+    // but the badge still prepends a provisional row and then refetches: the
+    // refetch swaps the provisional entry for the persisted one — readAt
+    // state included — and keeps the badge count in step with the server,
+    // which the payload alone cannot do. The same event also raises
     // a popup toast: a badge bump alone is invisible to a student who isn't
     // looking at the header, and "the Unit just posted" is worth interrupting
     // for.

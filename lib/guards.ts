@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse, GetServerSidePropsContext } from 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { landingFor } from "@/lib/roles";
-import { isDbConfigured } from "@/lib/prisma";
+import { isDbConfigured, prisma } from "@/lib/prisma";
 
 export type Role = "STUDENT" | "ADMIN";
 
@@ -33,6 +33,47 @@ export async function getSessionUser(
 }
 
 /**
+ * Re-verifies `isActive` from the database instead of trusting the session's
+ * copy of it.
+ *
+ * Why the re-read: NextAuth bakes `isActive` into the JWT at sign-in and only
+ * refreshes it when the session is re-issued, so the claim can go stale for
+ * the cookie's whole lifetime (up to 8h here). Deactivating an account in
+ * /admin/users blocks *new* sign-ins but not requests riding an existing
+ * session — a deactivated student kept lodging complaints and chatting until
+ * their token naturally expired. The DB row is the source of truth, so every
+ * guarded request pays one cheap indexed read (id + isActive only) to close
+ * that window to zero. Per-request only: caching across requests would just
+ * rebuild the staleness problem one layer down.
+ *
+ * A missing row (account deleted after the token was minted) counts as
+ * inactive — the JWT refers to a user who no longer exists. When no
+ * DATABASE_URL is configured there is nothing to re-read; the signed claim is
+ * all that exists, and any route that needs the DB 503s at requireDb anyway.
+ *
+ * An unreachable database (outage, pool exhaustion) also falls back to the
+ * signed claim rather than throwing: requireRole runs BEFORE the guarded()
+ * wrapper in every route, so a raw Prisma error here would surface as an
+ * unhandled 500 on routes that otherwise ride out a DB outage just fine
+ * (/api/upload documents exactly that mode). Same stance as getSettings'
+ * catch-to-default: every DB-backed write fails at its own query during the
+ * outage anyway, so this only re-opens the stale-claim window for its
+ * duration — never longer.
+ */
+async function isUserActive(user: SessionUser): Promise<boolean> {
+  if (!isDbConfigured()) return user.isActive;
+  try {
+    const row = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { isActive: true },
+    });
+    return row?.isActive ?? false;
+  } catch {
+    return user.isActive;
+  }
+}
+
+/**
  * Resolves the caller, or writes 401/403 and returns null. Callers must
  * `return` immediately when null comes back.
  */
@@ -47,8 +88,11 @@ export async function requireRole(
     res.status(401).json({ error: "Not signed in." });
     return null;
   }
-  if (!user.isActive) {
-    res.status(403).json({ error: "This account has been deactivated." });
+  // Deactivated mid-session: same 401 as an unauthenticated caller, not a
+  // distinct "deactivated" 403 — the client's 401 handling signs the stale
+  // session out, which is exactly what should happen to a deactivated user.
+  if (!(await isUserActive(user))) {
+    res.status(401).json({ error: "Not signed in." });
     return null;
   }
   if (role && user.role !== role) {
@@ -130,7 +174,11 @@ export async function requirePage(
       },
     };
   }
-  if (!user.isActive) {
+  // Same DB re-verification as requireRole: the JWT's isActive claim is a
+  // sign-in-time snapshot and goes stale for the cookie's whole lifetime, so
+  // a deactivation must redirect on the next page load, not at token expiry.
+  // The signin page surfaces ?error=deactivated with a human explanation.
+  if (!(await isUserActive(user))) {
     return {
       redirect: { destination: "/auth/signin?error=deactivated", permanent: false },
     };

@@ -289,7 +289,22 @@ export default function AdminMessagesPage() {
           if (message) parsed.push(message);
         }
         parsed.sort(byTime);
-        setMessages(parsed);
+        // Merge rather than replace: the response is the full thread, but a
+        // livechat:new may have arrived while the request was in flight, and
+        // a wholesale setMessages would wipe that row when the response
+        // lands. The prev side of the union is fenced to THIS conversation:
+        // switching from A to B mid-flight leaves A's rows in state (the
+        // loading veil hides them), and an unfiltered union would carry them
+        // into B's thread — a cross-conversation leak wearing B's pseudonym.
+        setMessages((prev) => {
+          const byId = new Map(
+            prev
+              .filter((row) => row.conversationId === selectedId)
+              .map((row) => [row.id, row]),
+          );
+          for (const row of parsed) byId.set(row.id, row);
+          return [...byId.values()].sort(byTime);
+        });
 
         // This GET is the read receipt — it clears the conversation's
         // adminUnread server-side — so the badge is zeroed locally at the
@@ -648,6 +663,26 @@ export default function AdminMessagesPage() {
       setMessages((prev) => prev.filter((row) => row.id !== message.id));
       pendingDeletes.current.set(message.id, message);
 
+      // Captured at gesture time, not read at failure time: the REST round
+      // trip is slow and the admin may have switched to another student's
+      // conversation before it fails. Restoring then would paint this
+      // conversation's text into a thread labelled with someone else's
+      // pseudonym — the same leak the socket path's chat:error handler
+      // guards against with selectedIdRef. Same stance too: when the admin
+      // has moved on, DROP the restore rather than leak it — the row is
+      // still in the database (the delete failed), so the next time they
+      // open this conversation the message is simply there again. Refs on
+      // this component instance are read at call time, so reaching the
+      // later-declared selectedIdRef from here is safe.
+      const conversationId = message.conversationId;
+      const restoreIfStillOpen = () => {
+        if (selectedIdRef.current !== conversationId) return;
+        setMessages((prev) => {
+          if (prev.some((row) => row.id === message.id)) return prev;
+          return [...prev, message].sort(byTime);
+        });
+      };
+
       if (socket && online) {
         // Fire-and-forget, same as a reply: the livechat:deleted broadcast is
         // the success receipt, chat:error the failure one.
@@ -661,10 +696,7 @@ export default function AdminMessagesPage() {
           { method: "DELETE", headers: { Accept: "application/json" } },
         );
         if (!res.ok) {
-          setMessages((prev) => {
-            if (prev.some((row) => row.id === message.id)) return prev;
-            return [...prev, message].sort(byTime);
-          });
+          restoreIfStillOpen();
           setThreadError("Message could not be deleted. Please try again.");
           return;
         }
@@ -672,10 +704,7 @@ export default function AdminMessagesPage() {
         // The preview may have pointed at the removed row.
         void loadInbox();
       } catch {
-        setMessages((prev) => {
-          if (prev.some((row) => row.id === message.id)) return prev;
-          return [...prev, message].sort(byTime);
-        });
+        restoreIfStillOpen();
         setThreadError("Could not reach the server. The message was not deleted.");
       }
     },

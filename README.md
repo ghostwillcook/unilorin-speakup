@@ -99,8 +99,19 @@ key sits in the caller's own namespace (admins may read any attachment, a studen
 and redirects to a URL signed for 60 seconds. Make the bucket public and you hand out permanent
 unauthenticated links to other students' evidence.
 
-Limits enforced server-side before any credential is issued: **10 MB per file, 5 files per
-complaint**, and a MIME allow-list of PNG, JPEG, WebP, PDF, plain text, DOC and DOCX.
+Limits are enforced in two application layers, because the signed upload URL itself binds no
+restriction — the browser's `PUT` carries its own headers and any byte length, so Supabase will
+store whatever arrives. `POST /api/upload` first checks what the client **declares**: **10 MB
+per file, 5 files per complaint**, and a MIME allow-list of PNG, JPEG, WebP, PDF, plain text,
+DOC and DOCX. Then `POST /api/complaints` stats each stored object with the service-role key
+and rejects the whole submission when the **real** stored size or content-type breaks those
+rules — that is the layer that catches a spoofed declaration (claim `notes.png` at 1 KB, `PUT`
+a 40 MB executable).
+
+**Manual step — set the bucket-level size limit.** Supabase itself imposes nothing on the
+`PUT`, so also cap the bucket in the Supabase dashboard: Storage → the bucket → Settings →
+**File size limit** → `10485760` bytes (10 MB). That is the hard backstop for anything that
+slips past both application layers, and it needs re-setting only if the bucket is recreated.
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-side only. Never rename it to `NEXT_PUBLIC_*` — it bypasses
 row-level security completely.

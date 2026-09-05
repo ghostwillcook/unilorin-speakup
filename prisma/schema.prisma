@@ -178,6 +178,10 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+
+  // Broadcast fan-out selects every subscription for a recipient list, so
+  // userId carries the same index the other per-user child models have.
+  @@index([userId])
 }
 
 /** A single-use password reset token. The emailed link carries the raw token;

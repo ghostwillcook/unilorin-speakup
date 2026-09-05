@@ -10,7 +10,13 @@ import {
 import type { SessionUser } from "@/lib/guards";
 import { getSettings } from "@/lib/settings";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { ownsStorageKey, UPLOAD_LIMITS } from "@/lib/supabase";
+import {
+  getSupabaseAdmin,
+  isStorageConfigured,
+  ownsStorageKey,
+  STORAGE_BUCKET,
+  UPLOAD_LIMITS,
+} from "@/lib/supabase";
 import type { ComplaintStatus } from "@/components/StatusBadge";
 
 /**
@@ -28,6 +34,10 @@ const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 5000;
 /** Matches the ceiling enforced in lib/supabase.ts, so both agree on a key. */
 const MAX_KEY = 400;
+/** Widened from the readonly tuple so `.includes(string)` type-checks. */
+const ALLOWED_MIME: readonly string[] = UPLOAD_LIMITS.allowedMime;
+/** The byte ceiling phrased for caller-facing error messages. */
+const MAX_FILE_MB = Math.round(UPLOAD_LIMITS.maxBytes / (1024 * 1024));
 
 /* ------------------------------------------------------------------ shapes */
 
@@ -194,8 +204,19 @@ function clip(value: string): string {
  * Every key must sit in the caller's own namespace. That is the check which
  * stops a student from attaching, and thereby gaining a route to read, another
  * student's evidence: `ownsStorageKey` also rejects `..` and absolute paths.
+ *
+ * This is also the second layer of upload enforcement, and the only one that
+ * sees real bytes. /api/upload checks the size and MIME type the client
+ * *declared* and then mints a signed upload URL, which binds no restriction
+ * (storage-js createSignedUploadUrl options are upsert-only) — the PUT that
+ * follows carries its own headers and any byte length, and Supabase stores it.
+ * By the time a key reaches here the object exists, so its stored metadata is
+ * finally checkable against UPLOAD_LIMITS: a submission whose stored size or
+ * content-type breaks the rules is rejected whole, because the offending file
+ * is already sitting in the bucket and silently attaching a clean subset would
+ * hide the problem from the student instead of telling them what to re-upload.
  */
-function readFiles(value: unknown, userId: string): FilesResult {
+async function readFiles(value: unknown, userId: string): Promise<FilesResult> {
   if (value === undefined || value === null) return { ok: true, files: [] };
 
   if (!Array.isArray(value)) {
@@ -227,7 +248,67 @@ function readFiles(value: unknown, userId: string): FilesResult {
     }
     files.push(key);
   }
+
+  // Storage must be reachable to verify anything. When it is not configured,
+  // /api/upload never minted a credential, so no submitted key can be a real
+  // attachment — reject rather than attach unverifiable keys to a complaint.
+  if (files.length > 0 && !isStorageConfigured()) {
+    return {
+      ok: false,
+      error: "Attachment uploads are not configured on this deployment.",
+    };
+  }
+
+  for (const key of files) {
+    const problem = await verifyStoredAttachment(key);
+    if (problem) return { ok: false, error: problem };
+  }
   return { ok: true, files };
+}
+
+/**
+ * Stats one stored object with the service-role client and compares the REAL
+ * metadata against UPLOAD_LIMITS. Returns null when the object passes, or a
+ * caller-facing error message when it does not — the wording mirrors
+ * /api/upload's so the same mistake reads the same at both layers.
+ */
+async function verifyStoredAttachment(key: string): Promise<string | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .storage.from(STORAGE_BUCKET)
+    .info(key);
+
+  // A key that passed the namespace check but matches no object was never
+  // uploaded through this app, or was deleted since — either way there is
+  // nothing to attach. Anything else (network error, 5xx) is a transient
+  // outage on Supabase's side, not the caller's mistake, so it gets copy
+  // that says "try again" rather than accusing the file of not existing.
+  if (error || !data) {
+    const status =
+      (error as { statusCode?: number } | null)?.statusCode ??
+      (typeof (error as { status?: number } | null)?.status === "number"
+        ? (error as { status?: number }).status
+        : 0);
+    if (status === 404 || status === 400) {
+      return `Attachment "${clip(key)}" could not be found in storage.`;
+    }
+    return `Attachment storage could not be reached — please try again in a moment.`;
+  }
+
+  const { size, contentType } = data;
+  if (typeof size !== "number" || typeof contentType !== "string") {
+    return `Attachment "${clip(key)}" could not be verified against storage.`;
+  }
+  if (size > UPLOAD_LIMITS.maxBytes) {
+    return `Attachment "${clip(key)}" is larger than the ${MAX_FILE_MB} MB limit.`;
+  }
+
+  // The stored content-type can carry parameters ("text/plain; charset=utf-8")
+  // exactly like the browser-declared header /api/upload normalizes.
+  const mime = contentType.toLowerCase().split(";")[0].trim();
+  if (!ALLOWED_MIME.includes(mime)) {
+    return `Files of type "${mime || "unknown"}" are not accepted.`;
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------- routes */
@@ -235,20 +316,27 @@ function readFiles(value: unknown, userId: string): FilesResult {
 async function listOwn(res: NextApiResponse, userId: string): Promise<void> {
   // The list is the My Complaints inbox, so each row carries its newest thread
   // message (for the preview) and a filtered count of unread Unit replies (for
-  // the dot). One query, no N+1.
+  // the dot). One query, no N+1. Both message reads filter `deletedAt`: a
+  // soft-deleted message must not leak its text into the preview nor keep the
+  // unread dot lit — the student asked for it gone, and the thread page
+  // already hides it, so the list agreeing with the thread is what stops a
+  // "deleted" message from living on in the preview.
   const rows = await prisma.complaint.findMany({
     where: { userId },
     orderBy: { updatedAt: "desc" },
     select: {
       ...COMPLAINT_FIELDS,
       messages: {
+        where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
         take: 1,
         select: { content: true, senderRole: true, createdAt: true },
       },
       _count: {
         select: {
-          messages: { where: { senderRole: "ADMIN", readAt: null } },
+          messages: {
+            where: { senderRole: "ADMIN", readAt: null, deletedAt: null },
+          },
         },
       },
     },
@@ -411,7 +499,7 @@ async function create(
     return;
   }
 
-  const files = readFiles(body.files, user.id);
+  const files = await readFiles(body.files, user.id);
   if (!files.ok) {
     res.status(400).json({ error: files.error });
     return;

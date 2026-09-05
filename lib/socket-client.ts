@@ -33,6 +33,12 @@ const SOCKET_URL =
 
 let shared: Socket | null = null;
 
+// One socket acquisition in flight at a time. Without this serialization,
+// concurrent useSocket() mounts each judged the shared socket independently
+// and raced each other into disconnecting healthy sockets — the full
+// mechanism is documented on acquireSocket() below.
+let inFlight: Promise<Socket | null> | null = null;
+
 /**
  * The socket server is a separate process on another origin, so the session
  * cookie is not reliably sent with the handshake. Instead the client fetches
@@ -48,6 +54,105 @@ async function fetchHandshakeToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Fetch the token, judge any existing shared socket, and build a fresh one
+ * only when the old one is genuinely dead. Extracted from the hook so the
+ * give-up heuristic lives in exactly one place.
+ */
+async function createSharedSocket(): Promise<Socket | null> {
+  const token = await fetchHandshakeToken();
+  if (!token) return null;
+
+  // Reconnect-give-up revival: after 5 failed attempts socket.io stops
+  // trying forever, but `shared` is never discarded — so every later page
+  // reused a dead socket and every panel's status pill said
+  // "connecting"/"offline" permanently while REST fallbacks silently
+  // carried the app. When the shared socket has given up, discard it and
+  // build a fresh one: the new attempt gets a full 5-attempt budget, and
+  // the token is re-fetched so an expired session token is not reused
+  // either.
+  //
+  // Give-up used to be inferred as "not connected and not reconnecting",
+  // but _reconnecting is ALSO false during a socket's first connection
+  // attempt — so a second useSocket() mount resolving while the first
+  // socket was mid-handshake saw it as dead, manually disconnected it
+  // (which sets the manager's skipReconnect flag: permanently dead) and
+  // built its own, leaving the first consumer holding a corpse forever
+  // (its effect deps are [enabled] only). The Manager's _readyState is
+  // "opening" during that first handshake and only settles on "closed"
+  // once the manager is truly done — including after reconnect attempts
+  // are exhausted — so it distinguishes the two cases cleanly.
+  //
+  // Both fields are private socket.io Manager state with no public
+  // accessors, so they are read defensively and treated as "still
+  // trying" when absent — the cost of a wrong guess is only one rebuilt
+  // socket, whereas wrongly guessing "gave up" kills a healthy one.
+  const existing = shared;
+  const manager = existing?.io as
+    | { _readyState?: string; _reconnecting?: boolean }
+    | undefined;
+  const gaveUp =
+    existing !== null &&
+    manager?._readyState === "closed" &&
+    !manager?._reconnecting;
+  if (gaveUp && existing) {
+    existing.disconnect();
+    shared = null;
+  }
+
+  // Healthy (or freshly judging) shared socket: reuse it as-is.
+  if (shared) {
+    return shared;
+  }
+
+  const socket = io(SOCKET_URL, {
+    auth: { token },
+    transports: ["websocket", "polling"],
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    timeout: 6000,
+  });
+  shared = socket;
+
+  // Belt-and-braces companion to the _readyState heuristic above:
+  // reconnect_failed is the library's own explicit "out of attempts"
+  // signal, so honor it by dropping the shared reference — the next
+  // useSocket() mount then builds a fresh socket (full 5-attempt budget,
+  // re-fetched token) instead of reusing a dead one. The guard keeps a
+  // newer socket from being discarded by an event fired by an older,
+  // already-replaced manager.
+  socket.io.on("reconnect_failed", () => {
+    if (shared === socket) {
+      shared = null;
+    }
+  });
+
+  return socket;
+}
+
+/**
+ * The single door to the shared socket.
+ *
+ * On a hard load of /student, NotificationBell (×2) and NotificationOverlay
+ * all mount within the same tick and used to each run their own token fetch
+ * and then independently judge the shared socket mid-handshake — each later
+ * resolver disconnected the earlier, perfectly healthy connecting socket and
+ * built its own. Serializing creation behind this module-level promise makes
+ * every concurrent consumer await the SAME connection attempt instead of
+ * each passing sentence on it. The promise is dropped once settled so a
+ * later mount (e.g. after a failed token fetch, or after reconnect_failed
+ * cleared the shared reference) starts a genuinely fresh attempt rather
+ * than replaying a dead result.
+ */
+function acquireSocket(): Promise<Socket | null> {
+  if (!inFlight) {
+    inFlight = createSharedSocket().finally(() => {
+      inFlight = null;
+    });
+  }
+  return inFlight;
 }
 
 export function getSocket(): Socket | null {
@@ -104,46 +209,18 @@ export function useSocket(enabled = true): {
     };
 
     void (async () => {
-      const token = await fetchHandshakeToken();
+      // Serialized: concurrent mounts all await the same in-flight attempt
+      // (see acquireSocket), so none of them disconnects another's healthy
+      // connecting socket.
+      const acquired = await acquireSocket();
       if (cancelled.current) return;
 
-      if (!token) {
+      if (!acquired) {
         setStatus("offline");
         return;
       }
 
-      // Reconnect-give-up revival: after 5 failed attempts socket.io stops
-      // trying forever, but `shared` is never discarded — so every later page
-      // reused a dead socket and every panel's status pill said
-      // "connecting"/"offline" permanently while REST fallbacks silently
-      // carried the app. When the shared socket has given up (it is neither
-      // connected nor retrying), discard it and build a fresh one: the new
-      // attempt gets a full 5-attempt budget, and the token is re-fetched so
-      // an expired session token is not reused either.
-      //
-      // reconnecting is a private socket.io Manager property with no public
-      // accessor, so it is read defensively and treated as "still trying"
-      // when absent — the cost of a wrong guess is only one rebuilt socket.
-      const existing = shared;
-      const gaveUp =
-        existing !== null &&
-        !existing.connected &&
-        !(existing.io as unknown as { _reconnecting?: boolean })._reconnecting;
-      if (gaveUp) {
-        existing.disconnect();
-        shared = null;
-      }
-
-      local =
-        shared ??
-        io(SOCKET_URL, {
-          auth: { token },
-          transports: ["websocket", "polling"],
-          reconnectionAttempts: 5,
-          reconnectionDelay: 1000,
-          timeout: 6000,
-        });
-      shared = local;
+      local = acquired;
 
       local.on("connect", onConnect);
       local.on("disconnect", onDisconnect);

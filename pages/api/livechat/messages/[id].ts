@@ -57,7 +57,9 @@ export default async function handler(
 
     const message = await prisma.liveMessage.findFirst({
       where: messageWhere,
-      select: { id: true },
+      // conversationId/senderRole/readAt feed the unread-counter repair
+      // below the delete; the id is all the 404 path ever needed.
+      select: { id: true, conversationId: true, senderRole: true, readAt: true },
     });
     if (!message) {
       // Same answer for "does not exist" and "not yours": which one it was is
@@ -85,6 +87,29 @@ export default async function handler(
         // from never having existed, which is the point of soft delete.
         res.status(404).json({ error: "Message not available." });
         return;
+      }
+
+      // The inbox badges are denormalized counts of unread LIVE messages: a
+      // student message unread by the Unit sits in adminUnread, a Unit
+      // message unread by the student in userUnread (the send routes
+      // increment exactly those — see the POST handlers). Soft-deleting an
+      // unread row must take its count back out, or the badge stays lit
+      // forever pointing at a bubble no view will ever render again. Only
+      // readAt-null rows were ever in the count; and the `gt: 0` guard
+      // floors the decrement at zero, because Prisma's plain decrement
+      // would happily write -1 if the counter had already drifted, and a
+      // negative badge is its own bug to unwind.
+      if (message.readAt === null) {
+        await prisma.liveConversation.updateMany({
+          where:
+            message.senderRole === "STUDENT"
+              ? { id: message.conversationId, adminUnread: { gt: 0 } }
+              : { id: message.conversationId, userUnread: { gt: 0 } },
+          data:
+            message.senderRole === "STUDENT"
+              ? { adminUnread: { decrement: 1 } }
+              : { userUnread: { decrement: 1 } },
+        });
       }
 
       res.status(200).json({ id: messageId });

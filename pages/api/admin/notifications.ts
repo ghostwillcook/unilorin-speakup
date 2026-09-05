@@ -100,9 +100,17 @@ function readString(value: unknown): string {
  * the notification length caps were removed, the admin can write a message
  * that no push service will accept. The full text is always in the database
  * and the in-app overlay — only the lock-screen preview is clipped.
+ *
+ * Sends run in PUSH_CHUNK-sized parallel batches rather than one at a time:
+ * this route is awaited inside the invocation (see send()), so a serial loop
+ * across a broadcast's hundreds of subscriptions could push the whole
+ * function past its timeout. Batching keeps the wall time at
+ * ~subs/chunk round-trips while the per-subscription try/catch is preserved,
+ * so one dead device neither fails nor slows its chunk-mates.
  */
 const PUSH_TITLE_MAX = 100;
 const PUSH_BODY_MAX = 3000;
+const PUSH_CHUNK = 20;
 
 async function pushToRecipients(
   userIds: string[],
@@ -122,31 +130,36 @@ async function pushToRecipients(
   const subs = await prisma.pushSubscription.findMany({
     where: { userId: { in: userIds } },
   });
-  for (const sub of subs) {
-    try {
-      await webpush.sendNotification(
-        {
-          endpoint: sub.endpoint,
-          keys: { p256dh: sub.p256dh, auth: sub.auth },
-        },
-        JSON.stringify({
-          title: title.slice(0, PUSH_TITLE_MAX),
-          body: body.slice(0, PUSH_BODY_MAX),
-        }),
-      );
-    } catch (err) {
-      // 404/410 = the subscription is dead (uninstalled, expired). Prune;
-      // 413 = payload too large for this push service (already truncated —
-      // some services have tighter limits); skip rather than prune, because
-      // the subscription itself is healthy. Anything else is transient and
-      // the next send retries it.
-      const statusCode = (err as { statusCode?: number }).statusCode;
-      if (statusCode === 404 || statusCode === 410) {
-        await prisma.pushSubscription
-          .delete({ where: { id: sub.id } })
-          .catch(() => {});
-      }
-    }
+  for (let i = 0; i < subs.length; i += PUSH_CHUNK) {
+    const chunk = subs.slice(i, i + PUSH_CHUNK);
+    await Promise.all(
+      chunk.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: { p256dh: sub.p256dh, auth: sub.auth },
+            },
+            JSON.stringify({
+              title: title.slice(0, PUSH_TITLE_MAX),
+              body: body.slice(0, PUSH_BODY_MAX),
+            }),
+          );
+        } catch (err) {
+          // 404/410 = the subscription is dead (uninstalled, expired). Prune;
+          // 413 = payload too large for this push service (already truncated —
+          // some services have tighter limits); skip rather than prune, because
+          // the subscription itself is healthy. Anything else is transient and
+          // the next send retries it.
+          const statusCode = (err as { statusCode?: number }).statusCode;
+          if (statusCode === 404 || statusCode === 410) {
+            await prisma.pushSubscription
+              .delete({ where: { id: sub.id } })
+              .catch(() => {});
+          }
+        }
+      }),
+    );
   }
 }
 
@@ -191,18 +204,19 @@ async function send(
   });
 
   // Push after persistence — the rows are the source of truth, so a push
-  // outage must never make the send itself fail. Fire-and-forget (detached
-  // with setImmediate so the response is sent BEFORE the push loop runs):
-  // a serial push to every subscription of every recipient can easily
-  // outlast a serverless function's timeout, which would yield a 504 "not
-  // sent" after the rows were already committed — and an admin retrying
-  // after that error would duplicate the send. The push may still be cut
-  // short by a function timeout for very large broadcasts, but the in-app
-  // notification is already delivered; the push is the enhancement.
+  // outage must never make the send itself fail (.catch keeps that promise).
+  // But it MUST be awaited inside this invocation, before the response: this
+  // route runs on Netlify Functions, and the platform freezes the function
+  // the moment the response is sent — a setImmediate scheduled after the
+  // 201 never runs at all. That is the exact failure mode that silently
+  // dropped the forgot-password emails in prod (see
+  // pages/api/auth/forgot-password.ts, fixed in 778a9a1), and here it meant
+  // students got the in-app row but never the lock-screen push on every
+  // REST-path send. Awaiting costs the admin a few seconds on large
+  // broadcasts (the chunked loop above keeps that bounded); the durable
+  // answer for very large audiences is a Netlify Background Function.
   const recipientIds = recipients.map((r) => r.id);
-  setImmediate(() => {
-    void pushToRecipients(recipientIds, title, message).catch(() => {});
-  });
+  await pushToRecipients(recipientIds, title, message).catch(() => {});
 
   res.status(201).json({ count: recipients.length });
 }

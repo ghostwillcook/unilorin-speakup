@@ -38,26 +38,33 @@ export function hashToken(raw: string): string {
  *
  * Rows older than 24h are pruned: only the last 24h is needed for the
  * limiter's rolling window, so older rows are dead weight.
+ *
+ * The three writes are wrapped in a $transaction: the invalidate-prior-tokens
+ * step and the create are only meaningful together (at most one live token
+ * per user is the invariant the consume side relies on), and the daily
+ * limiter counts rows — a create racing a request that already minted its
+ * 5th token would let both through, exceeding the 5/day intent and leaving
+ * two live tokens at once.
  */
 export async function createResetToken(userId: string): Promise<string> {
-  await prisma.passwordResetToken.updateMany({
-    where: { userId, usedAt: null },
-    data: { usedAt: new Date() },
-  });
-
-  await prisma.passwordResetToken.deleteMany({
-    where: { createdAt: { lt: new Date(Date.now() - RESET_WINDOW_MS) } },
-  });
-
   const token = randomBytes(32).toString("hex");
 
-  await prisma.passwordResetToken.create({
-    data: {
-      userId,
-      tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000),
-    },
-  });
+  await prisma.$transaction([
+    prisma.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+    prisma.passwordResetToken.deleteMany({
+      where: { createdAt: { lt: new Date(Date.now() - RESET_WINDOW_MS) } },
+    }),
+    prisma.passwordResetToken.create({
+      data: {
+        userId,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000),
+      },
+    }),
+  ]);
 
   // Local and preview environments cannot receive real email (Resend only
   // delivers to the account owner's own address on the test key), so log the
@@ -93,6 +100,14 @@ export type ConsumeResult =
  * same call makes the token single-use: a second attempt with the same link
  * finds a used row and fails.
  *
+ * The burn is a compare-and-swap, not a read-then-update: the plain update
+ * matched only on `id`, so two concurrent consumes of the same link both
+ * read an unused row and both succeeded — the token was effectively
+ * multi-use under a race. updateMany re-asserts `usedAt: null` (and still
+ * unexpired) in the WHERE clause, so exactly one of the racing calls can
+ * win; the loser sees count === 0 and reports "expired", the same outcome
+ * as any second use of a spent link.
+ *
  * A used token is reported as "expired" rather than a distinct reason — the
  * client outcome is identical ("this link no longer works, request a new
  * one"), and collapsing the two avoids hinting an attacker whether the token
@@ -105,15 +120,20 @@ export async function consumeResetToken(
     where: { tokenHash: hashToken(rawToken) },
   });
 
+  // findUnique exists only to distinguish invalid (no row) from expired
+  // (used/past TTL) for the response copy; the CAS below is what actually
+  // decides burn rights.
   if (!row) return { ok: false, reason: "invalid" };
   if (row.usedAt !== null || row.expiresAt < new Date()) {
     return { ok: false, reason: "expired" };
   }
 
-  await prisma.passwordResetToken.update({
-    where: { id: row.id },
+  const burn = await prisma.passwordResetToken.updateMany({
+    where: { id: row.id, usedAt: null, expiresAt: { gt: new Date() } },
     data: { usedAt: new Date() },
   });
+
+  if (burn.count === 0) return { ok: false, reason: "expired" };
 
   return { ok: true, userId: row.userId };
 }

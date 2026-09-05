@@ -50,3 +50,19 @@
   for = "/api/*"
   [headers.values]
     Cache-Control = "no-store, max-age=0"
+
+# Security headers for every route, on top of the HSTS and
+# X-Content-Type-Options: nosniff the platform already serves. Clickjacking:
+# nothing in this app is ever legitimately framed, so DENY across the board.
+# Referrer-Policy: strict-origin-when-cross-origin keeps a full URL (which can
+# carry a complaint id or token in a query string) from leaking to whatever
+# external sites the pages link out to, while still sending the origin so
+# outbound analytics keep working. Deliberately NO Content-Security-Policy
+# here: a CSP that breaks the Next.js runtime, inline styles, or the service
+# worker would take the whole app down, and it cannot be written blind — it
+# needs a manual pass against the real site's loaded resources first.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"

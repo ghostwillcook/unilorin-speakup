@@ -7,6 +7,7 @@ import {
   requireRole,
 } from "@/lib/guards";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getSettings } from "@/lib/settings";
 
 /**
  * GET  /api/livechat — the caller's own Live Chat conversation (created on
@@ -154,6 +155,8 @@ export default async function handler(
         createdAt: conversation.createdAt.toISOString(),
         messages: rows.map(toMessage),
       };
+      // Personal data: never store it in a shared or browser cache.
+      res.setHeader("Cache-Control", "no-store, max-age=0");
       res.status(200).json(body);
       return;
     }
@@ -175,8 +178,15 @@ export default async function handler(
         return;
       }
 
-      // Same allowance as the socket twin of this write path.
-      const verdict = checkRateLimit(caller.id);
+      // Same allowance as the socket twin of this write path (livechat:send
+      // in server/socket.mjs): the admin's chatRateLimitPerMin setting, not
+      // the limiter's blind default. Without this the setting only bound the
+      // realtime path and a scripted REST loop ignored it entirely — and on a
+      // cold free-tier socket the REST path IS the one every real send takes.
+      // getSettings falls back to the default (20) when the row is missing or
+      // the table is cold, so the absent-setting case keeps today's budget.
+      const settings = await getSettings();
+      const verdict = checkRateLimit(caller.id, settings.chatRateLimitPerMin);
       if (!verdict.ok) {
         res.status(429).json({
           error: `You are sending messages too quickly. Try again in ${verdict.retryInSeconds}s.`,

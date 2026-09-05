@@ -118,7 +118,11 @@ export default function MessagesPanel() {
    * path clears the composer on emit, so without this stash a rejection would
    * cost the student the text as well as the message. Restored only into an
    * empty composer (never over a retyped draft), and spent when the
-   * livechat:new echo of that message confirms it was persisted.
+   * livechat:new echo of that send confirms it was persisted. The stash is
+   * keyed by the sent text: the echo is the only receipt there is, and its
+   * content — validated and stored verbatim — is the only per-send identity
+   * the client ever sees (the row id is server-assigned, so it cannot key
+   * anything at emit time). See handleNew for why the clear must match.
    */
   const pendingDraftRef = useRef<string | null>(null);
 
@@ -211,8 +215,17 @@ export default function MessagesPanel() {
       if (!message) return;
       mergeMessage(message);
       // The echo of this student's own send is the proof it was persisted,
-      // so the text stashed for chat:error recovery is spent.
-      if (message.senderRole === "STUDENT") {
+      // so the text stashed for chat:error recovery is spent — but only by
+      // the echo that CARRIES the stashed text. Clearing on any STUDENT echo
+      // let the receipt for one send spend a different, still-pending send's
+      // stash: that send then failed with nothing left to restore, losing
+      // the typed text anyway. Same-text echoes (two identical sends, the
+      // first failing) restore nothing — harmless, since the identical
+      // message just landed in the thread.
+      if (
+        message.senderRole === "STUDENT" &&
+        pendingDraftRef.current === message.content
+      ) {
         pendingDraftRef.current = null;
       }
     }

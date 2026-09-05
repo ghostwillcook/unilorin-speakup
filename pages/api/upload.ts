@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { guarded, methodNotAllowed, requireRole } from "@/lib/guards";
+import { checkRateLimit } from "@/lib/rate-limit";
 import {
   getSupabaseAdmin,
   isStorageConfigured,
@@ -13,11 +14,22 @@ import {
  *
  * The file itself never passes through Next.js: the browser gets a scoped token
  * and PUTs straight to Supabase Storage. That keeps the service-role key on the
- * server, avoids the 4 MB API body limit, and means the size/type rules are
- * enforced here, before any credential is issued.
+ * server and avoids the 4 MB API body limit — but it also means this route can
+ * only vet what the client DECLARES: the signed upload URL binds no size or
+ * content-type restriction (storage-js createSignedUploadUrl options are
+ * upsert-only), and the PUT that follows carries its own headers and any byte
+ * length. Enforcement is therefore layered, not single-point:
+ *   1. here, against the declared filename/MIME/size, before a credential is
+ *      issued — catches the honest mistake and the lazy script;
+ *   2. at complaint submission (readFiles in pages/api/complaints/index.ts),
+ *      which stats each stored object's REAL metadata with the service-role
+ *      client and rejects mismatches before anything is attached;
+ *   3. a bucket-level size cap set in the Supabase dashboard (documented in
+ *      README) as the hard backstop Supabase itself enforces.
  *
- * No requireDb: session state lives in the JWT and nothing here queries
- * Postgres, so uploads keep working during a database outage.
+ * No requireDb: session state lives in the JWT, and the isActive re-check in
+ * requireRole fails open to the signed claim when Postgres is unreachable
+ * (see lib/guards.ts), so uploads keep working during a database outage.
  */
 
 const MAX_FILENAME = 255;
@@ -49,6 +61,18 @@ export default async function handler(
   // about how storage is configured.
   const user = await requireRole(req, res, "STUDENT");
   if (!user) return;
+
+  // Rate limited like every other write route — this was the last unthrottled
+  // one. Each call mints a short-lived write credential against the bucket, so
+  // an unthrottled scripted loop could mint unlimited signed upload URLs and
+  // hammer Storage directly, bypassing every per-complaint limit.
+  const verdict = checkRateLimit(user.id);
+  if (!verdict.ok) {
+    res.status(429).json({
+      error: `You are uploading too quickly. Try again in ${verdict.retryInSeconds}s.`,
+    });
+    return;
+  }
 
   if (!isStorageConfigured()) {
     return res.status(503).json({
