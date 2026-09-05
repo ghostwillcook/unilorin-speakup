@@ -47,6 +47,7 @@ model User {
   liveMessages      LiveMessage[]      @relation("LiveMessages")
   notifications     Notification[]
   pushSubscriptions PushSubscription[]
+  passwordResets    PasswordResetToken[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -177,6 +178,21 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+}
+
+/** A single-use password reset token. The emailed link carries the raw token;
+ *  only its SHA-256 hash is stored, so a database leak cannot be replayed as
+ *  reset links. Each new request deletes the user's prior unused tokens. */
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Setting {

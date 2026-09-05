@@ -336,6 +336,17 @@ export default function SignInPage() {
               >
                 {submitting ? "Signing in…" : "Sign In"}
               </button>
+
+              {/* The password-recovery entry point, kept at the submit area
+                  where a locked-out student's eyes already are. */}
+              <p className="text-center">
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-sm font-semibold text-[var(--wl-violet)] hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </p>
             </form>
 
             <p className="mt-6 border-t border-[var(--wl-rule)] pt-5 text-center text-xs leading-relaxed text-[var(--wl-slate)]">

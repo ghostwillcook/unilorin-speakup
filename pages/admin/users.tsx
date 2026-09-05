@@ -20,6 +20,11 @@ import { dateTimeLabel } from "@/lib/pseudonym";
  * Administrator rows render the control disabled rather than letting a click
  * discover the API's refusal, because the one account that can lock everyone out
  * of the console is the console's own.
+ *
+ * Staff can also email a student a password-reset link straight from the roster
+ * — the same flow the sign-in page's Forgot Password triggers, minus the
+ * student having to find it. Administrator rows don't offer one: their password
+ * guards the console itself, and reset emails target the student sign-in path.
  */
 
 const DEBOUNCE_MS = 350;
@@ -121,7 +126,14 @@ export default function AdminUsers({ user }: Props) {
   const [setupHint, setSetupHint] = useState<string | null>(null);
   /** The row whose PATCH is in flight, so only its button shows a spinner. */
   const [pendingId, setPendingId] = useState<string | null>(null);
+  /** The row whose reset-link POST is in flight — same trick, separate action,
+   *  so the spinner lands on the button that was actually clicked. */
+  const [resetPendingId, setResetPendingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Outcome banner for the last reset-link send (delivered, or link-only). */
+  const [notice, setNotice] = useState<{ warn: boolean; text: string } | null>(
+    null,
+  );
   /** Bumped by Refresh to re-run the load effect without changing the search. */
   const [nonce, setNonce] = useState(0);
 
@@ -200,6 +212,7 @@ export default function AdminUsers({ user }: Props) {
 
     setPendingId(row.id);
     setActionError(null);
+    setNotice(null);
 
     try {
       const res = await fetch(`/api/admin/users/${encodeURIComponent(row.id)}`, {
@@ -239,7 +252,70 @@ export default function AdminUsers({ user }: Props) {
     }
   }, []);
 
+  const sendResetLink = useCallback(async (row: UserRow) => {
+    // Defensive: only student rows show the button, and the API refuses too.
+    if (row.role === "ADMIN") return;
+
+    if (
+      !window.confirm(
+        `Send a password reset link to ${row.name}?\n\n` +
+          `${row.email}\n\n` +
+          "They will get an email letting them set a new password. The link " +
+          "expires shortly and can only be used once.",
+      )
+    ) {
+      return;
+    }
+
+    setResetPendingId(row.id);
+    setActionError(null);
+    setNotice(null);
+
+    try {
+      const res = await fetch(
+        `/api/admin/users/${encodeURIComponent(row.id)}/reset-password`,
+        { method: "POST" },
+      );
+      const body: unknown = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setActionError(
+          readField(body, "error") ??
+            `Could not send a reset link to ${row.name} (${res.status}).`,
+        );
+        return;
+      }
+
+      // A reset link changes nothing on the roster itself, so unlike
+      // setActive there is no row to swap in — the banner below is the whole
+      // outcome. `emailSent: false` means the token exists but the email
+      // never left the server; that's a configuration problem the admin
+      // can't fix from this page, so the banner says what to do next.
+      const emailSent = !(isRecord(body) && body.emailSent === false);
+      setNotice(
+        emailSent
+          ? {
+              warn: false,
+              text: `Reset link sent to ${row.email || row.name}.`,
+            }
+          : {
+              warn: true,
+              text: "Reset link generated, but the email could not be sent — ask the student to use Forgot Password, or check the email configuration.",
+            },
+      );
+    } catch {
+      setActionError(
+        `Could not reach the server to send a reset link to ${row.name}. Please try again.`,
+      );
+    } finally {
+      setResetPendingId(null);
+    }
+  }, []);
+
   const inactive = users.filter((row) => !row.isActive).length;
+  // One row action in flight at a time, across both kinds, so writes to the
+  // same roster can't overlap.
+  const busy = pendingId !== null || resetPendingId !== null;
 
   return (
     <AdminLayout
@@ -283,6 +359,16 @@ export default function AdminUsers({ user }: Props) {
         <div className="notice notice-error mb-5" role="alert">
           <span aria-hidden="true">✕</span>
           <span>{actionError}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div
+          className={`notice mb-5${notice.warn ? " notice-warn" : ""}`}
+          role="status"
+        >
+          <span aria-hidden="true">{notice.warn ? "⚠" : "✓"}</span>
+          <span>{notice.text}</span>
         </div>
       )}
 
@@ -346,8 +432,10 @@ export default function AdminUsers({ user }: Props) {
                 key={row.id}
                 row={row}
                 pending={pendingId === row.id}
-                busy={pendingId !== null}
+                resetPending={resetPendingId === row.id}
+                busy={busy}
                 onSetActive={setActive}
+                onSendResetLink={sendResetLink}
               />
             ))}
           </ul>
@@ -362,15 +450,20 @@ export default function AdminUsers({ user }: Props) {
 function UserListRow({
   row,
   pending,
+  resetPending,
   busy,
   onSetActive,
+  onSendResetLink,
 }: {
   row: UserRow;
   /** This row's own PATCH is in flight. */
   pending: boolean;
-  /** Some row's PATCH is in flight; others lock to avoid overlapping writes. */
+  /** This row's own reset-link POST is in flight. */
+  resetPending: boolean;
+  /** Some row's action is in flight; others lock to avoid overlapping writes. */
   busy: boolean;
   onSetActive: (row: UserRow, next: boolean) => void;
+  onSendResetLink: (row: UserRow) => void;
 }) {
   const isAdmin = row.role === "ADMIN";
 
@@ -428,28 +521,42 @@ function UserListRow({
             Deactivate
           </NeonButton>
         </span>
-      ) : row.isActive ? (
-        <NeonButton
-          variant="danger"
-          className="shrink-0"
-          loading={pending}
-          disabled={busy && !pending}
-          onClick={() => onSetActive(row, false)}
-          title={`Block ${row.name} from signing in`}
-        >
-          Deactivate
-        </NeonButton>
       ) : (
-        <NeonButton
-          variant="ghost"
-          className="shrink-0"
-          loading={pending}
-          disabled={busy && !pending}
-          onClick={() => onSetActive(row, true)}
-          title={`Restore sign-in for ${row.name}`}
-        >
-          Reactivate
-        </NeonButton>
+        /* Student rows carry two actions, so they get a wrapping cluster
+           instead of a lone button — it keeps the pair on one line when the
+           row is wide and stacks them under the details when it isn't. */
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {row.isActive ? (
+            <NeonButton
+              variant="danger"
+              loading={pending}
+              disabled={busy && !pending}
+              onClick={() => onSetActive(row, false)}
+              title={`Block ${row.name} from signing in`}
+            >
+              Deactivate
+            </NeonButton>
+          ) : (
+            <NeonButton
+              variant="ghost"
+              loading={pending}
+              disabled={busy && !pending}
+              onClick={() => onSetActive(row, true)}
+              title={`Restore sign-in for ${row.name}`}
+            >
+              Reactivate
+            </NeonButton>
+          )}
+          <NeonButton
+            variant="ghost"
+            loading={resetPending}
+            disabled={busy && !resetPending}
+            onClick={() => onSendResetLink(row)}
+            title={`Email ${row.name} a password reset link`}
+          >
+            Send reset link
+          </NeonButton>
+        </div>
       )}
     </li>
   );
