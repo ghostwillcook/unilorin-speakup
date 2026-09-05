@@ -15,7 +15,7 @@ import {
   SphereShape,
   SpeechBubbleShape,
 } from "@/components/landing/Shapes";
-import { wlAccent, wlBody, wlDisplay } from "@/lib/fonts";
+import { wlBody, wlDisplay } from "@/lib/fonts";
 import { useHeaderFold } from "@/lib/useHeaderFold";
 
 /**
@@ -42,7 +42,7 @@ export default function Home() {
       </Head>
 
       <div
-        className={`wl-page flex min-h-screen flex-col ${wlDisplay.variable} ${wlBody.variable} ${wlAccent.variable}`}
+        className={`wl-page flex min-h-screen flex-col ${wlDisplay.variable} ${wlBody.variable}`}
       >
         <SiteHeader />
 
@@ -261,15 +261,10 @@ function Hero() {
           </Reveal>
 
           <h1 className="wl-display mt-7 text-[clamp(2.5rem,7vw,5.5rem)] text-white">
-            {/* Node arrays per line: "Connect." is the one italic-serif accent
-                word in the hero, wrapped in its own word slot so the reveal
-                still treats it as a single unit of the sequence. */}
-            <WordLines
-              lines={[
-                ["UNILORIN"],
-                ["Student", <span key="connect" className="wl-accent">Connect.</span>],
-              ]}
-            />
+            {/* Plain string lines: the whole headline uses the display face —
+                the italic-serif accent experiment was reverted per owner
+                feedback (the grotesque alone reads better). */}
+            <WordLines lines={["UNILORIN", "Student Connect."]} />
           </h1>
 
           <Reveal delay={140}>
@@ -347,8 +342,7 @@ function BentoGrid() {
           Everything on one record
         </span>
         <h2 className="wl-h2 mt-4 max-w-2xl">
-          From the moment you raise it to the moment it&apos;s{" "}
-          <span className="wl-accent">resolved.</span>
+          From the moment you raise it to the moment it&apos;s resolved.
         </h2>
       </Reveal>
 
@@ -511,7 +505,7 @@ function NumberedFeatures() {
           How it works
         </span>
         <h2 className="wl-h2 mt-4 max-w-2xl">
-          Three steps, start to <span className="wl-accent">resolution.</span>
+          Three steps, start to resolution.
         </h2>
       </Reveal>
 
@@ -841,7 +835,7 @@ function CtaBanner() {
       <div className="wl-hero wl-on-violet relative flex flex-col items-start gap-8 overflow-hidden p-10 sm:p-14 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative max-w-xl">
           <h2 className="wl-h2 text-white">
-            Your voice reaches <span className="wl-accent">further</span> here.
+            Your voice reaches further here.
           </h2>
           <p className="mt-4 text-base leading-relaxed text-white/80">
             Sign in with your UNILORIN email, raise what matters, and follow it
@@ -882,10 +876,13 @@ function CtaBanner() {
 function SiteFooter() {
   return (
     <footer className="border-t border-[var(--wl-rule)] bg-white/60">
-      <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-5 py-8 text-center sm:flex-row sm:text-left">
-        <div className="flex items-center gap-3">
-          <UnilorinLogo size={30} />
-          <p className="text-xs leading-relaxed text-[rgb(17_12_30/0.55)]">
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 text-center sm:flex-row sm:text-left">
+        {/* The crest is a bordered disc, which reads heavy next to two stacked
+            caption lines — size 24 (smaller than the header's 34) plus a
+            wider gap keeps the lockup from feeling fused into one blob. */}
+        <div className="flex items-center gap-4">
+          <UnilorinLogo size={24} />
+          <p className="text-left text-xs leading-relaxed text-[rgb(17_12_30/0.55)]">
             Student Affairs Unit
             <br />
             University of Ilorin, Nigeria

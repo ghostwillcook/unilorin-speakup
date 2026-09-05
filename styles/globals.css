@@ -1358,19 +1358,6 @@
   font-weight: 700;
   letter-spacing: -0.02em;
 }
-/* The italic-serif accent word — at most ONE per headline. The contrast
-   against the heavy grotesque is the signature; a second accent word in the
-   same heading stops reading as intent and starts reading as a font mix-up.
-   Size and colour are inherited from the headline so only the family,
-   style, weight and tracking change. */
-.wl-accent {
-  font-family: var(--wl-accent), ui-serif, Georgia, serif;
-  font-style: italic;
-  font-weight: 400;
-  /* Serif italics need normal tracking: the -0.03em the display faces use
-     would crowd the curves against their neighbours. */
-  letter-spacing: 0;
-}
 .wl-body-lg {
   font-size: 1.0625rem;
   line-height: 1.55;
