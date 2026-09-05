@@ -4,7 +4,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { guarded, methodNotAllowed, requireDb } from "@/lib/guards";
 import { appBaseUrl, isEmailConfigured, sendEmail } from "@/lib/email";
 import { resetRequestEmail } from "@/lib/email-templates";
-import { TOKEN_TTL_MINUTES, createResetToken } from "@/lib/password-reset";
+import {
+  RESET_REQUEST_LIMIT,
+  TOKEN_TTL_MINUTES,
+  countRecentResetRequests,
+  createResetToken,
+} from "@/lib/password-reset";
 
 /**
  * POST /api/auth/forgot-password — public entry point of the reset flow.
@@ -14,6 +19,13 @@ import { TOKEN_TTL_MINUTES, createResetToken } from "@/lib/password-reset";
  * and with anyone's email in the body, which is why every decision below is
  * shaped to leak nothing about which addresses have accounts.
  */
+
+// The owner's test accounts — they need unlimited resets while testing;
+// production students are not exempt from the daily limit.
+const RESET_LIMIT_EXEMPT_EMAILS = new Set([
+  "iyanuoluwaotaro@gmail.com",
+  "mutmainnahtope@gmail.com",
+]);
 
 export default async function handler(
   req: NextApiRequest,
@@ -64,6 +76,29 @@ export default async function handler(
     if (!user) {
       res.status(200).json({
         message: "If that email has an account, a reset link has been sent.",
+      });
+      return;
+    }
+
+    // Daily limiter (max 5 requests per account per rolling 24h). Runs after
+    // the per-minute checkRateLimit above so the minute limiter still fires
+    // first, and only for KNOWN accounts — unknown emails return the generic
+    // 200 above untouched.
+    //
+    // Trade-off: returning a distinct 429 here reveals the account exists
+    // once 5 requests have been made. Accepted because the per-minute limiter
+    // already blunts enumeration (probing 5+ times per address takes minutes),
+    // a real user locked out of their account needs this specific message,
+    // and the owner spec'd the behavior.
+    if (
+      !RESET_LIMIT_EXEMPT_EMAILS.has(email) &&
+      (await countRecentResetRequests(user.id)) >= RESET_REQUEST_LIMIT
+    ) {
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.status(429).json({
+        error:
+          "You've reached the daily limit for password reset requests. " +
+          "Please try again tomorrow.",
       });
       return;
     }

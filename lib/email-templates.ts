@@ -3,11 +3,13 @@
  *
  * Everything is inline-styled and table-based: email clients (Gmail,
  * Outlook) strip <style> blocks and some ignore flexbox entirely, so the
- * only reliable toolkit is tables plus inline attributes. No images, no
- * external CSS — the mail must render fully offline and in dark-mode
- * clients that invert colors. The palette matches the site: the violet
- * header band is --wl-violet (#10026F) on the warm paper background
- * (#f7f5f0) the landing page uses.
+ * only reliable toolkit is tables plus inline attributes. The one image is
+ * the UNILORIN crest, hosted at the production origin — email clients
+ * (Gmail especially) only load absolutely-URL'd hosted images and block
+ * them by default, so the crest sits in a white badge next to the wordmark
+ * text, and the header still reads fully when the image never loads. The
+ * palette matches the site: the violet header band is --wl-violet
+ * (#10026F) on the warm paper background (#f7f5f0) the landing page uses.
  */
 
 const VIOLET = "#10026F";
@@ -20,7 +22,10 @@ const CARD_MAX_WIDTH = 480;
  * Shared visual frame: full-bleed paper background, violet wordmark band,
  * and a white card. `title` is the <title> (inbox preview text in some
  * clients) — the visible header is the wordmark band, so the two are
- * kept separate from the body content.
+ * kept separate from the body content. The band pairs the hosted crest
+ * (in a white rounded badge, since jpegs carry no transparency against
+ * the violet) with the wordmark text, laid out in a table because
+ * flexbox is unreliable in email clients.
  */
 export function emailShell(title: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
@@ -37,7 +42,16 @@ export function emailShell(title: string, bodyHtml: string): string {
           <table role="presentation" width="${CARD_MAX_WIDTH}" cellpadding="0" cellspacing="0" style="width:100%;max-width:${CARD_MAX_WIDTH}px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
             <tr>
               <td style="background-color:${VIOLET};padding:24px 28px;">
-                <span style="font-family:Georgia,'Times New Roman',serif;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">UNILORIN Student Connect</span>
+                <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td style="background-color:#ffffff;border-radius:8px;padding:3px;">
+                      <img src="https://unilorinstudentconnect.com/unilorin-crest.jpg" alt="" width="38" height="38" style="display:block;width:38px;height:38px;border:0;" />
+                    </td>
+                    <td style="padding-left:12px;">
+                      <span style="font-family:Georgia,'Times New Roman',serif;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">UNILORIN Student Connect</span>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>

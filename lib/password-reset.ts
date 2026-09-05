@@ -14,6 +14,12 @@ import { appBaseUrl } from "@/lib/email";
 
 export const TOKEN_TTL_MINUTES = 60;
 
+/** Max reset requests per user per rolling 24h window (owner spec). */
+export const RESET_REQUEST_LIMIT = 5;
+
+/** Length of the rolling window the request limiter counts over. */
+const RESET_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /** SHA-256 hex digest — fast is correct here; this is not a password. */
 export function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
@@ -23,13 +29,25 @@ export function hashToken(raw: string): string {
  * Issues a new reset token for `userId` and returns the RAW token (the part
  * that goes into the email link, never the stored hash).
  *
- * Existing rows for the user are deleted first so each request invalidates
- * all prior links: there is at most one live token per user, which means a
- * user who requests twice is not protected by the first (possibly stolen)
- * email still working.
+ * The user's existing UNUSED tokens are marked used rather than deleted:
+ * consumeResetToken rejects any row with a `usedAt`, so the old links die
+ * just as they did under deleteMany (at most one live token per user — a
+ * user who requests twice is not protected by the first, possibly stolen,
+ * email still working), but the rows survive as the request history the
+ * 24h limiter counts.
+ *
+ * Rows older than 24h are pruned: only the last 24h is needed for the
+ * limiter's rolling window, so older rows are dead weight.
  */
 export async function createResetToken(userId: string): Promise<string> {
-  await prisma.passwordResetToken.deleteMany({ where: { userId } });
+  await prisma.passwordResetToken.updateMany({
+    where: { userId, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  await prisma.passwordResetToken.deleteMany({
+    where: { createdAt: { lt: new Date(Date.now() - RESET_WINDOW_MS) } },
+  });
 
   const token = randomBytes(32).toString("hex");
 
@@ -51,6 +69,19 @@ export async function createResetToken(userId: string): Promise<string> {
   }
 
   return token;
+}
+
+/**
+ * How many reset requests `userId` has made in the last 24h — used by the
+ * daily limiter. Counts ALL rows (used or not): every row is one issued
+ * token, which is exactly the limiter's unit.
+ */
+export async function countRecentResetRequests(
+  userId: string,
+): Promise<number> {
+  return prisma.passwordResetToken.count({
+    where: { userId, createdAt: { gte: new Date(Date.now() - RESET_WINDOW_MS) } },
+  });
 }
 
 export type ConsumeResult =
